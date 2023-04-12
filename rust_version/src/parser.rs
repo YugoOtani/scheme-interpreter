@@ -44,17 +44,40 @@ fn parse_top(s: &str) -> IResult<&str, Toplevel> {
         .map(|(s2, (_, _, s))| (s2, Toplevel::Load(s)))
 }
 fn parse_string(s: &str) -> IResult<&str, String> {
-    todo!()
+    let s = del_space(s);
+    let (s, res) = delimited(char('"'), is_not("\n\""), char('"'))(s)?;
+    Ok((s, res.to_string()))
 }
 fn parse_def(s: &str) -> IResult<&str, Define> {
-    let s = del_space(s);
-    delimited(
-        char('('),
-        permutation((multispace0, parse_id, multispace1, parse_exp, multispace0)),
-        char(')'),
-    )(s)
-    .map(|(s2, (_, id, _, exp, _))| (s2, Define::Define(id, exp)))
+    if let Ok((s, res)) = parse_def_var(s) {
+        Ok((s, res))
+    } else {
+        parse_def_fn(s)
+    }
 }
+fn parse_def_var(s: &str) -> IResult<&str, Define> {
+    map(
+        in_bracket(permutation((
+            tag("define"),
+            multispace1,
+            parse_id,
+            multispace1,
+            parse_exp,
+        ))),
+        |(_, _, id, _, exp)| Define::Var(id, exp),
+    )(s)
+}
+fn parse_def_fn(s: &str) -> IResult<&str, Define> {
+    map(in_bracket(permutation((
+        tag("define"),
+        parse_id,
+        multispace1,
+        parse_params,
+        parse_body,
+    )))
+    .map(|(_, param, body)| Define::Func()))(s)
+}
+
 fn parse_params(s: &str) -> IResult<&str, Params> {
     todo!()
 }
@@ -71,11 +94,12 @@ fn parse_arg(s: &str) -> IResult<&str, Arg> {
     todo!()
 }
 fn parse_exp(s: &str) -> IResult<&str, Exp> {
-    parse_id(s).map(|(s2, id)| (s2, Exp::Id(id)))
+    fail(s)
 }
 
 fn parse_id(s: &str) -> IResult<&str, Id> {
-    alphanumeric1(s).map(|(s2, res)| (s2, Id(res.to_string())))
+    fail(s)
+    //alphanumeric1(s).map(|(s2, res)| (s2, Id(res.to_string())))
 }
 fn parse_sexp(s: &str) -> IResult<&str, SExp> {
     todo!()
