@@ -7,22 +7,14 @@ data Params = Params ![Id] !(Maybe Id) deriving Show
 data Exp = ExpConst !Const 
          | ExpId !Id
          | Lambda !Arg !Body
-         | FnCall !Exp ![Exp]
          | Quote !SExp
-         | Set !Id !Exp
-         | Let1 !(Maybe Id) ![Binding] !Body
-         | Let2 ![Binding] !Body
-         | LetRec ![Binding] !Body
-         | If {cond:: !Exp, thenExp:: !Exp, elseExp:: !(Maybe Exp)}
-         | ExpCond ![Branch] ![Exp]
-         | ExpAnd ![Exp]
-         | ExpOr ![Exp]
-         | Begin ![Exp] deriving Show
+         | List1 !Id ![Exp]
+         | List2 !Exp ![Exp] deriving Show
+         
 data Branch = Branch !Exp ![Exp] deriving Show
 data Body = Body ![Define] ![Exp] deriving Show
 data Arg = Arg ![Id] !(Maybe Id) deriving Show
-data Binding = Binding !Id !Exp deriving Show
-data SExp = SConst !Const | SId !Id | SExpList ![SExp] !(Maybe SExp) deriving Show
+data SExp = SConst !Const | SId !Id | SList ![SExp] !(Maybe SExp) deriving Show
 data Const = Num !Integer | Bool !Bool | String !String | Nil deriving Show
 newtype Id = Id String deriving Show
 
@@ -55,37 +47,18 @@ instance ToStr Exp where
                                                     ,indentN (i+1) <> "Args"
                                                     ,indentN (i+2) <> show ids <> " ", show id
                                                     , tostr (i+1) body]
-    tostr i (FnCall exp exps) = unlines1 [indentN i <> "Exp(FunCall)"
-                                        ,indentN (i+1) <> "Function" 
-                                        ,tostr (i+2) exp
-                                        ,indentN (i+1) <> "Argument"
-                                        ,tostr (i+2)  exps]
+
     tostr i (Quote sexp) = unlines1 [indentN i <> "Exp(SExp)" , tostr (i+1) sexp]
-    tostr i (Set id exp) = unlines1 [indentN i <> "Exp(Set)", show id, tostr (i+1) exp]
-    tostr i (Let1 id binds body) = unlines1 [indentN i <> "Exp(Let1)"
-                                            , indentN (i+1) <> show id
-                                            ,tostr (i+1) binds
-                                            ,tostr (i+1) body]
-    tostr i (Let2 binds body) = unlines1 [indentN i <> "Exp(Let2)", tostr (i+1) binds, tostr (i+1) body]
-    tostr i (LetRec binds body) = unlines1 [indentN i <> "Exp(LetRec)", tostr (i+1) binds, tostr (i+1) body]
-    tostr i (If cnd thenexp elseexp) = unlines1 [indentN i <> "Exp(If)"
-                                                ,indentN (i+1) <> "cond"
-                                                ,tostr (i+1) cnd
-                                                ,indentN (i+1) <> "then"
-                                                ,tostr (i+1) thenexp
-                                                ,indentN (i+1) <> "else"
-                                                ,tostr (i+1) elseexp]
-    tostr i (ExpCond branches exps) = unlines1 [indentN i <> "Exp(Cond)"
-                                            , tostr (i+1) branches
-                                            ,indentN (i+1) <> "else"
-                                            , tostr (i+1) exps]
-    tostr i (ExpAnd exps) = unlines1 [indentN i <> "Exp(And)", tostr (i+1) exps]
-    tostr i (ExpOr exps) = unlines1 [indentN i <> "Exp(Or)", tostr (i+1) exps]
-    tostr i (Begin exps) = unlines1 [indentN i <> "Exp(Begin)", tostr (i+1) exps]
+    tostr i (List1 id exps) = unlines1 [indentN i <> "Exp(FnCall1)"
+                                        , indentN (i+1) <> show id, tostr (i+1) exps]
+    tostr i (List2 exp1 exp2) = unlines1 [indentN i <> "Exp(FnCall2)"
+                                        , tostr (i+1) exp1
+                                        , tostr (i+1) exp2]
+
 instance ToStr SExp where
     tostr i (SConst c ) = unlines1 [indentN i <> "SExp(Const)", tostr (i+1) c]
     tostr i (SId id ) = unlines1 [indentN i <> "SExp(Id)" , show id]
-    tostr i (SExpList sexps sexp) = unlines1 [indentN i <> "SExp(List)"
+    tostr i (SList sexps sexp) = unlines1 [indentN i <> "SExp(List)"
                                             ,tostr (i+1) sexps
                                             ,tostr (i+1) sexp]
 instance ToStr Branch where
@@ -98,10 +71,7 @@ instance ToStr Arg where
     tostr i (Arg args rest) = unlines1 [indentN i <> "Args"
                                         , indentN (i+1) <> show args
                                         , indentN (i+1) <> show rest]
-instance ToStr Binding where
-    tostr i (Binding id exp) = unlines1 [indentN i <> "Bindeing"
-                                        , indentN (i+1) <> show id
-                                        , tostr (i+1) exp]
+
 instance ToStr Const where
     tostr i (Num n) = indentN i <> "Const " <> show n
     tostr i (Bool b) = indentN i <> "Const " <>show b
@@ -116,7 +86,7 @@ instance ToStr Body where
 
 instance ToStr a => ToStr [a] where
     tostr i [] = indentN i <> "empty"
-    tostr i as = unlines1 (tostr (i+1) <$> as)
+    tostr i as = indentN i <> "List\n" <> unlines1 (tostr (i+1) <$> as)
 instance ToStr a => ToStr (Maybe a) where
     tostr i Nothing = indentN i <> "Nothing"
     tostr i (Just v) = indentN i <> "Just\n" <> tostr (i+1) v 

@@ -15,8 +15,6 @@ main = do
 
 
 test = ptop
-
-ptop :: P.Parser Toplevel
 ptop = space0 *> 
     (TopDefine <$> pdef)
     <|> (Load <$> inBrace (P.str "load" *> space1 *> pstr))
@@ -27,8 +25,6 @@ pdef = defvar <|> deffn
 defvar = inBrace $ do
     (_, id', exp) <- splitedBySpace3 (P.str "define") pId pexp
     return $ DefVar id'  exp
-
-
 
 deffn = inBrace $ do
     P.str "define"
@@ -46,17 +42,38 @@ pparams = do
 
 pexp = (ExpConst <$> pconst)
     <|> (ExpId <$> pId)
-    <|> inBrace (FnCall <$> pexp <* space1 <*> list0 space1 pexp)
+    <|> plambda
+    <|> pquote
+    <|> inBrace (List1 <$> pId <* space1 <*> list0 space1 pexp)
+    <|> inBrace (List2 <$> pexp <* space0 <*> list0 space1 pexp)
     -- (Exp *Exp)は最後?
-pcond = P.fail ""
+
+plambda = inBrace $ do
+    P.str "lambda"
+    space0
+    arg <- parg
+    space0
+    Lambda arg <$> pbody
+pquote = inBrace (do
+    P.str "quote"
+    space0
+    Quote <$> psexp) <|> Quote <$> (P.char '\'' *> psexp)
 pbody = Body <$> many pdef <*> some pexp 
-parg = P.fail ""
-pbinding = P.fail ""
-psexp = P.fail ""
+parg = ((\a -> Arg [a] Nothing) <$> pId)
+    <|> inBrace (do
+            ids <- list0 space1 pId
+            rest <- P.opt (space1 *> P.char '.' *> space1 *> pId)
+            return $ Arg ids rest
+        )
+psexp = (SConst <$> pconst) <|> (SId <$> pId)
+        <|> inBrace (do
+                exps <- list0 space1 psexp
+                rest <- P.opt (space1 *> P.char '.' *> space1 *> psexp)
+                return $ SList exps rest
+            )
 pconst = (Num <$> pnum) <|> (Bool <$> pbool) <|> (String <$> pstr) <|> (Nil <$ pnil) 
 pnil = P.char '(' *> space0 *> P.char ')' >> return ()
 pbool = (True <$ P.str "#t") <|> (False <$ P.str "#f")
---TODO
 pnum = read <$> some (P.takeIf Ch.isDigit)
 
 pId = do
