@@ -4,11 +4,12 @@
 {-# HLINT ignore "Use second" #-}
 module Parser where
 import qualified Data.Text as T
-import Control.Monad
+import Control.Monad ( forM )
 import Control.Applicative
 
 newtype Data = Str Str
 type Str = String
+type Log = String
 type Result a = Either Str (Str, a)
 newtype Parser a = Parser {runParse:: Str -> Result a }
 
@@ -36,41 +37,65 @@ instance Monad Parser where
 instance Alternative Parser where
     empty = Parser Left
     (Parser a) <|> (Parser b) = Parser $ \s -> case a s of
-        Left l -> b s
-        Right r -> Right r
+        Left la -> case b s of
+            Left lb -> Left $ la <> " " <> lb
+            Right rb -> Right rb
+        Right ra -> Right ra
 
 fail :: Str -> Parser a
 fail s = Parser $ \t -> Left s
 
+try :: Parser a -> Parser a
+try (Parser p) = Parser $ \s -> case p s of
+    Left l -> Left l
+    Right (s2,res) -> Right (s, res)
+
 takeIf :: (Char -> Bool) -> Parser Char
 takeIf pred = Parser $ \s -> case s of
-    "" -> Left "[readif] empty string"
+    "" -> Left ""
     s | pred (head s) -> Right (tail s, head s)
-    s -> Left $ "[readif] '" 
-               <> [head s] 
-               <> "' does not satisfy given condition ( ["
-               <> tail s <> "] is left)"
+    s -> Left ""
 
 char :: Char -> Parser Char
 char c = takeIf (== c)
 
-
-takeWhile :: (Char -> Bool) -> Parser Str
-takeWhile pred = Parser $ \s -> Right $ swap $ span pred s 
-
 swap (a,b) = (b,a)
 
 -- TODO: Error message
-takeStr :: Str -> Parser Str
-takeStr s = forM s $ \c -> takeIf (== c)
+str :: Str -> Parser Str
+str s = forM s $ \c -> takeIf (== c)
 
 opt :: Parser a -> Parser (Maybe a)
 opt (Parser p) = Parser $ \s -> case p s of
     Left l -> Right (s, Nothing)
     Right (s2,r) -> Right (s2, Just r)
 
+look1 :: Parser (Maybe Char)
+look1 = Parser $ \s -> case s of
+    "" -> Right ("", Nothing)
+    _ -> Right (s, Just (head s))
+
 
 (.>.) :: Str -> Parser a -> Result a
 t .>. (Parser a) = a t
 
+oneof :: Str -> Parser Char
+oneof s = Parser $ \s2 -> case s2 of
+    (c:cs) | c `elem` s -> Right (cs, c)
+    _ -> Left ""
 
+noneof :: Str -> Parser Char
+noneof s = Parser $ \s2 -> case s2 of
+    (c:cs) | c `notElem` s2 -> Right (cs, c)
+    _ -> Left ""
+
+get :: Parser Str
+get = Parser $ \s -> Right (s,s)
+
+set :: Str -> Parser ()
+set s = Parser $ \s2 -> Right (s, ()) 
+
+
+
+
+    

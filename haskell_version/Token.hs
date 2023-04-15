@@ -7,6 +7,7 @@ data Params = Params ![Id] !(Maybe Id) deriving Show
 data Exp = ExpConst !Const 
          | ExpId !Id
          | Lambda !Arg !Body
+         | FnCall !Exp ![Exp]
          | Quote !SExp
          | Set !Id !Exp
          | Let1 !(Maybe Id) ![Binding] !Body
