@@ -1,6 +1,7 @@
 import qualified Parser as P
 
 import Parser ((.>.))
+
 import Token
 import Control.Applicative
 import Data.Char as Ch
@@ -8,18 +9,18 @@ import Control.Monad
 
 main = do
     s <- getLine
-    print s
-    case s .>. test of
-        Right (r,s) -> print (r,s)
-        Left l -> putStrLn ("fail" <> l)
+    putStrLn $ case s .>. test of
+        Right (s,res) -> tostr 0 res
+        Left l -> "fail" <> l
 
 
 test = ptop
 
 ptop :: P.Parser Toplevel
-ptop = space0 *> (TopExp <$> pexp)
-    <|> (TopDefine <$> pdef)
+ptop = space0 *> 
+    (TopDefine <$> pdef)
     <|> (Load <$> inBrace (P.str "load" *> space1 *> pstr))
+    <|> (TopExp <$> pexp)
 -- maybe need to revise 
 pstr = P.char '"' *> many (P.takeIf (/= '"')) <* P.char '"' 
 pdef = defvar <|> deffn 
@@ -43,8 +44,6 @@ pparams = do
     id' <- P.opt (space1 *> P.char '.' *> space1 *> pId)
     return $ Params ids id'
 
-
-pexp :: P.Parser Exp
 pexp = (ExpConst <$> pconst)
     <|> (ExpId <$> pId)
     <|> inBrace (FnCall <$> pexp <* space1 <*> list0 space1 pexp)
