@@ -21,9 +21,9 @@ newtype Id = Id String deriving Show
 
 
 
-
-indentN 0 = "  "
-indentN i = "  " <> indentN (i-1)
+indentStr = " |"
+indentN 0 = indentStr
+indentN i = indentStr <> indentN (i-1)
 showChild i cld = indentN i <> show cld
 class ToStr a where
     tostr :: Int -> a -> String
@@ -45,7 +45,7 @@ instance ToStr Exp where
     tostr i (ExpId id) = unlines1 [indentN i <> "Exp(Id)", showChild (i+1) id]
     tostr i (Lambda (Arg ids id) body) = unlines1 [indentN i <> "Exp(Lambda)" 
                                                     ,indentN (i+1) <> "Args"
-                                                    ,indentN (i+2) <> show ids <> " ", show id
+                                                    ,indentN (i+2) <> show ids <> " " <> show id
                                                     , tostr (i+1) body]
 
     tostr i (Quote sexp) = unlines1 [indentN i <> "Exp(SExp)" , tostr (i+1) sexp]
