@@ -1,5 +1,6 @@
+module TokenParser where
 import qualified Parser as P
-
+import Data.List
 import Parser ((.>.))
 
 import Token
@@ -7,14 +8,13 @@ import Control.Applicative
 import Data.Char as Ch
 import Control.Monad
 
-main = do
-    s <- getLine
-    putStrLn $ case s .>. test of
-        Right (s,res) -> tostr 0 res
-        Left l -> "fail" <> l
+parse :: String -> Either String Toplevel
+parse s = case dropWhileEnd Ch.isSpace s .>. ptop of 
+    Left err -> Left err
+    Right ("",res) -> Right res
+    Right (s, _) -> Left $ "[" <> s <> "] remains untaken"
 
 
-test = ptop
 ptop = space0 *> 
     (TopDefine <$> pdef)
     <|> (Load <$> inBrace (P.str "load" *> space1 *> pstr))
@@ -44,8 +44,7 @@ pexp = (ExpConst <$> pconst)
     <|> (ExpId <$> pId)
     <|> plambda
     <|> pquote
-    <|> inBrace (List1 <$> pId <* space1 <*> list0 space1 pexp)
-    <|> inBrace (List2 <$> pexp <* space0 <*> list0 space1 pexp)
+    <|> inBrace (FnCall <$> pexp <* space0 <*> list0 space1 pexp)
     -- (Exp *Exp)は最後?
 
 plambda = inBrace $ do
@@ -53,6 +52,7 @@ plambda = inBrace $ do
     space0
     arg <- parg
     space0
+    body <- pbody
     Lambda arg <$> pbody
 pquote = inBrace (do
     P.str "quote"

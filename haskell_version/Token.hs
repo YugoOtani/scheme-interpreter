@@ -1,5 +1,6 @@
 module Token where
 import qualified Data.Text as T
+import Data.Map
 data Toplevel = TopExp !Exp | TopDefine !Define | Load !String deriving Show
 data Define = DefVar !Id !Exp 
             | DefFn !Id !Params !Body deriving Show
@@ -8,17 +9,31 @@ data Exp = ExpConst !Const
          | ExpId !Id
          | Lambda !Arg !Body
          | Quote !SExp
-         | List1 !Id ![Exp]
-         | List2 !Exp ![Exp] deriving Show
+         | FnCall !Exp ![Exp] deriving Show
          
 data Branch = Branch !Exp ![Exp] deriving Show
 data Body = Body ![Define] ![Exp] deriving Show
 data Arg = Arg ![Id] !(Maybe Id) deriving Show
 data SExp = SConst !Const | SId !Id | SList ![SExp] !(Maybe SExp) deriving Show
-data Const = Num !Integer | Bool !Bool | String !String | Nil deriving Show
+data Const = Num !Integer | Bool !Bool | String !String | Nil
+instance Show Const where
+    show (Num i) = show i
+    show (Bool b) = if b then "#t" else "#f"
+    show (String s) = s
+    show Nil = "()"
 newtype Id = Id String deriving Show
 
+data SchemeVal = Const !Const | List ![SchemeVal] | Closure !(Env,Procedure) 
+type ReturnVal = Either String SchemeVal
+type Procedure = (Arg,[SchemeVal] -> ReturnVal)
+instance Show SchemeVal where
+    show (Const c) = show c
+    show (List l) = show l
+    show (Closure _) = "#<procedure>"
 
+
+type Variables = Map String SchemeVal
+data Env = Frame !Variables !Env | NilFrame deriving Show
 
 
 indentStr = " |"
@@ -49,11 +64,8 @@ instance ToStr Exp where
                                                     , tostr (i+1) body]
 
     tostr i (Quote sexp) = unlines1 [indentN i <> "Exp(SExp)" , tostr (i+1) sexp]
-    tostr i (List1 id exps) = unlines1 [indentN i <> "Exp(FnCall1)"
-                                        , indentN (i+1) <> show id, tostr (i+1) exps]
-    tostr i (List2 exp1 exp2) = unlines1 [indentN i <> "Exp(FnCall2)"
-                                        , tostr (i+1) exp1
-                                        , tostr (i+1) exp2]
+    tostr i (FnCall exp exps) = unlines1 [indentN i <> "Exp(FnCall1)"
+                                        , tostr (i+1) exp, tostr (i+1) exps]
 
 instance ToStr SExp where
     tostr i (SConst c ) = unlines1 [indentN i <> "SExp(Const)", tostr (i+1) c]
