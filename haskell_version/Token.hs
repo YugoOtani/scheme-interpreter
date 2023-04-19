@@ -48,7 +48,9 @@ instance Show SchemeVal where
 
 type Variables = Map String SchemeVal
 data Env = Frame !Variables !Env | NilFrame deriving Show
-
+instance ToStr Env where
+    tostr i NilFrame = indentN i <> "Nil"
+    tostr i (Frame vars par) = indentN i <> show vars <> "\n" <> tostr (i+1) par
 
 indentStr = " |"
 indentN 0 = indentStr

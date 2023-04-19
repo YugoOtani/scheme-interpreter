@@ -58,7 +58,7 @@ pquote = inBrace (do
     P.str "quote"
     space0
     Quote <$> psexp) <|> Quote <$> (P.char '\'' *> psexp)
-pbody = Body <$> many pdef <*> some pexp 
+pbody = Body <$> (space0 *> list0 space1 pdef) <*> (space0 *> list1 space1 pexp)
 parg = ((\a -> Params [a] Nothing) <$> pId)
     <|> inBrace (do
             ids <- list0 space1 pId

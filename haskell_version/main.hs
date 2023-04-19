@@ -54,19 +54,23 @@ main = do
         loop i env = do
             putStr $ "Haskeme[" <> show i <> "] > "
             input <- getLine
-            let res = evalInput input env
-            case res of
-                Left l -> do
-                    putStrLn l
+            case parse input of
+                Right parseRes -> case eval rootFrame parseRes of
+                    Left l -> do
+                        putStrLn $ tostr 0 parseRes
+                        putStrLn l
+                        loop (i+1) env
+                    Right (r,newEnv) -> do
+                        print r   -- TODO:defineなどreturn typeがないとき
+                        putStrLn $ "env:\n" <> tostr 0 env
+                        loop (i+1) newEnv
+                Left _ -> do
+                    putStrLn "parse error"
                     loop (i+1) env
-                Right (r,newEnv) -> do
-                    print r   -- TODO:defineなどreturn typeがないとき
-                    loop (i+1) newEnv
+                
 
-evalInput :: String -> Env -> Either String (SchemeVal, Env)
-evalInput s env = do
-    res <- parse s
-    eval env res
+evalInput :: Env -> Toplevel -> Either String (SchemeVal, Env)
+evalInput = eval
 
 
 class Eval a where
@@ -105,7 +109,6 @@ instance Eval Exp where
                     else do
                         params_args <- Mp.fromList <$> zipArgs ids mid args'
                         let newEnv = Frame params_args parEnv
-                    -- eval defs
                         (_, newEnv') <- evalList newEnv defs
                         (expres, newEnv'') <- evalList newEnv' exps
                         return (last expres, newEnv'')
@@ -135,7 +138,7 @@ zipArgs params (Just (Id id)) args = if length args < length params
 instance Eval Id where
     eval env (Id id) = case findVal env id of
         Just v -> Right (v,env)
-        Nothing -> Left $ "could not find value [" <> id <> "]"
+        Nothing -> Left $ "could not find value [" <> id <> "]\n" <> "note : env is \n" <> tostr 0 env 
 
 
 instance Eval Const where
