@@ -7,7 +7,7 @@ data Define = DefVar !Id !Exp
 data Params = Params ![Id] !(Maybe Id) deriving Show
 data Exp = ExpConst !Const 
          | ExpId !Id
-         | Lambda !Arg !Body
+         | Lambda !Lambda
          | Quote !SExp
          | FnCall !Exp ![Exp] deriving Show
          
@@ -15,7 +15,11 @@ data Branch = Branch !Exp ![Exp] deriving Show
 data Body = Body ![Define] ![Exp] deriving Show
 data Arg = Arg ![Id] !(Maybe Id) deriving Show
 data SExp = SConst !Const | SId !Id | SList ![SExp] !(Maybe SExp) deriving Show
-data Const = Num !Integer | Bool !Bool | String !String | Nil
+data Const = Num !Number | Bool !Bool | String !String | Nil
+data Number = Integer !Integer | NaN 
+instance Show Number where
+    show NaN = "NaN"
+    show (Integer i) = show i
 instance Show Const where
     show (Num i) = show i
     show (Bool b) = if b then "#t" else "#f"
@@ -23,13 +27,15 @@ instance Show Const where
     show Nil = "()"
 newtype Id = Id String deriving Show
 
-data SchemeVal = Const !Const | List ![SchemeVal] | Closure !(Env,Procedure) 
+data SchemeVal = Const !Const | List ![SchemeVal] | Closure !(Env,Lambda) | BuiltInFunc !Func
+type Lambda = (Arg, Body)
+type Func = [SchemeVal] -> ReturnVal
 type ReturnVal = Either String SchemeVal
-type Procedure = (Arg,[SchemeVal] -> ReturnVal)
 instance Show SchemeVal where
     show (Const c) = show c
     show (List l) = show l
     show (Closure _) = "#<procedure>"
+    show (BuiltInFunc _) = "#<procedure>"
 
 
 type Variables = Map String SchemeVal
@@ -58,7 +64,7 @@ instance ToStr Params where
 instance ToStr Exp where
     tostr i (ExpConst c) = unlines1 [indentN i <> "Exp(Const)", tostr i c]
     tostr i (ExpId id) = unlines1 [indentN i <> "Exp(Id)", showChild (i+1) id]
-    tostr i (Lambda (Arg ids id) body) = unlines1 [indentN i <> "Exp(Lambda)" 
+    tostr i (Lambda (Arg ids id,body)) = unlines1 [indentN i <> "Exp(Lambda)" 
                                                     ,indentN (i+1) <> "Args"
                                                     ,indentN (i+2) <> show ids <> " " <> show id
                                                     , tostr (i+1) body]

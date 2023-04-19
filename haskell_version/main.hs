@@ -7,15 +7,38 @@ import qualified Data.Map as Mp
 import Control.Monad (forM, forM_)
 import Data.List
 
-toSchemeVal root "+"  = Closure (root, (Arg [] (Just (Id "a")) ,def))
-    where def args = Const . Num . sum <$> forM args (\e -> case e of
-                                                    Const (Num i) -> Right i
-                                                    _ -> Left "'+' can only be applied between numbers")
+toSchemeVal :: Env -> [Char] -> SchemeVal
+toSchemeVal root "+"  = BuiltInFunc $ \args -> do
+                        a <- forM args (\e -> case e of
+                                Const (Num i) -> Right i
+                                _ -> Left "'+' can only be applied between numbers")
+                        Right $ Const $ Num $ sum' a 
+toSchemeVal root "-" = BuiltInFunc f where
+                        f [] = Left "'-' must have 1 argument"
+                        f (Const (Num NaN) : xs) = Right $ Const $ Num NaN
+                        f (Const (Num (Integer i)) : xs) = do
+                            a <- forM xs (\e -> case e of
+                                Const (Num i) -> Right i
+                                _ -> Left "'-' can only be applied between numbers")
+                            let ans = case sum' a of
+                                        NaN -> NaN
+                                        (Integer i2) -> Integer (i - i2)
+                            Right $ Const $ Num ans
+                        f _ = Left "'-' can only be applied between numbers"
+
 toSchemeVal _ _ = undefined
+
+                                                            
+sum' :: [Number] -> Number
+sum' = foldl' f (Integer 0) where
+    f NaN _ = NaN
+    f _ NaN = NaN
+    f (Integer acc) (Integer i) = Integer (acc + i)
+
 
 rootFrame :: Env
 rootFrame = let root = defRootFrame root
-                defRootFrame env = Frame (Mp.fromList ((\s -> (s,toSchemeVal env s)) <$> ["+"])) NilFrame
+                defRootFrame env = Frame (Mp.fromList ((\s -> (s, toSchemeVal env s)) <$> ["+","-"])) NilFrame
             in root
 
 findVal :: Env -> String -> Maybe SchemeVal
@@ -29,7 +52,7 @@ findVal (Frame values f ) s = case Mp.lookup s values of
 main = do
     loop 1 rootFrame where
         loop i env = do
-            putStr $ "Haskeme" <> show i <> "] > "
+            putStr $ "Haskeme[" <> show i <> "] > "
             input <- getLine
             let res = evalInput input env
             case res of
@@ -54,14 +77,19 @@ instance Eval Toplevel where
     eval env _ = undefined
 
 instance Eval Exp where
+    eval env (ExpId id) = eval env id
+    eval env (ExpConst c) = eval env c
     eval env (FnCall fn params) = do
         (res, _) <- eval env fn --env?
         params' <-  map fst <$> forM params (eval env)
         case res of 
-            Closure (parEmv, (Arg ids mid, func)) -> undefined
+            BuiltInFunc f -> do
+                    ret <- f params'
+                    return (ret, env)
+            Closure (parEmv, (Arg ids mid, body)) -> do
+                    undefined
             e ->  Left $ show e <> "is not a procedure"
-
-    eval env _ = undefined
+    eval env a = Left $ show a <> " is not defined" 
 
 instance Eval Id where
     eval env (Id id) = case findVal env id of

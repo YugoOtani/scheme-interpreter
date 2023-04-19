@@ -10,7 +10,7 @@ import Control.Monad
 
 parse :: String -> Either String Toplevel
 parse s = case dropWhileEnd Ch.isSpace s .>. ptop of 
-    Left err -> Left err
+    Left err -> Left "parse error"
     Right ("",res) -> Right res
     Right (s, _) -> Left $ "[" <> s <> "] remains untaken"
 
@@ -53,7 +53,7 @@ plambda = inBrace $ do
     arg <- parg
     space0
     body <- pbody
-    Lambda arg <$> pbody
+    return $ Lambda (arg,body)
 pquote = inBrace (do
     P.str "quote"
     space0
@@ -71,10 +71,10 @@ psexp = (SConst <$> pconst) <|> (SId <$> pId)
                 rest <- P.opt (space1 *> P.char '.' *> space1 *> psexp)
                 return $ SList exps rest
             )
-pconst = (Num <$> pnum) <|> (Bool <$> pbool) <|> (String <$> pstr) <|> (Nil <$ pnil) 
+pconst = (Num  <$> pnum) <|> (Bool <$> pbool) <|> (String <$> pstr) <|> (Nil <$ pnil) 
 pnil = P.char '(' *> space0 *> P.char ')' >> return ()
 pbool = (True <$ P.str "#t") <|> (False <$ P.str "#f")
-pnum = read <$> some (P.takeIf Ch.isDigit)
+pnum = Integer . read <$> some (P.takeIf Ch.isDigit)
 
 pId = do
     s <- some $ P.takeIf Ch.isDigit <|> P.takeIf Ch.isAlpha <|> P.oneof "!$%&*+-./<=>?@^_"
