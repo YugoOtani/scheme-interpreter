@@ -55,14 +55,15 @@ main = do
             putStr $ "Haskeme[" <> show i <> "] > "
             input <- getLine
             case parse input of
-                Right parseRes -> case eval rootFrame parseRes of
+                Right parseRes -> case eval env parseRes of
                     Left l -> do
                         putStrLn $ tostr 0 parseRes
                         putStrLn l
                         loop (i+1) env
                     Right (r,newEnv) -> do
+                        putStrLn $ tostr 0 parseRes
                         print r   -- TODO:defineなどreturn typeがないとき
-                        putStrLn $ "env:\n" <> tostr 0 env
+                        putStrLn $ "env:\n" <> tostr 0 newEnv
                         loop (i+1) newEnv
                 Left _ -> do
                     putStrLn "parse error"
@@ -111,7 +112,7 @@ instance Eval Exp where
                         let newEnv = Frame params_args parEnv
                         (_, newEnv') <- evalList newEnv defs
                         (expres, newEnv'') <- evalList newEnv' exps
-                        return (last expres, newEnv'')
+                        return (last expres, env) -- envだと副作用がなくなる
                     
                     
             e ->  Left $ show e <> "is not a procedure"
@@ -121,7 +122,7 @@ evalList ::  Eval a => Env -> [a] -> Either String ([SchemeVal],Env)
 evalList env [] = Right ([],env) 
 evalList env (x:xs) = do
     (xval,env') <- eval env x
-    (xsval,env'') <- evalList env xs
+    (xsval,env'') <- evalList env' xs
     return (xval:xsval,env'')
 fromId (Id s) = s
 
