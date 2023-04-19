@@ -4,16 +4,24 @@ import Data.Map
 data Toplevel = TopExp !Exp | TopDefine !Define | Load !String deriving Show
 data Define = DefVar !Id !Exp 
             | DefFn !Id !Params !Body deriving Show
-data Params = Params ![Id] !(Maybe Id) deriving Show
 data Exp = ExpConst !Const 
          | ExpId !Id
          | Lambda !Lambda
          | Quote !SExp
+         {- | Set !Id !Exp
+         | Let !(Maybe Id) ![Binding] !Body
+         | Let2 ![Binding] !Body
+         | LetRec ![Binding] !Body
+         | If !Exp !Exp !(Maybe Exp)
+         | Cond ![Branch] !(Maybe [Exp])
+         | And ![Exp]
+         | Or ![Exp]
+         | Begin ![Exp]-}
          | FnCall !Exp ![Exp] deriving Show
          
 data Branch = Branch !Exp ![Exp] deriving Show
 data Body = Body ![Define] ![Exp] deriving Show
-data Arg = Arg ![Id] !(Maybe Id) deriving Show
+data Params = Params ![Id] !(Maybe Id) deriving Show
 data SExp = SConst !Const | SId !Id | SList ![SExp] !(Maybe SExp) deriving Show
 data Const = Num !Number | Bool !Bool | String !String | Nil
 data Number = Integer !Integer | NaN 
@@ -28,7 +36,7 @@ instance Show Const where
 newtype Id = Id String deriving Show
 
 data SchemeVal = Const !Const | List ![SchemeVal] | Closure !(Env,Lambda) | BuiltInFunc !Func
-type Lambda = (Arg, Body)
+type Lambda = (Params, Body)
 type Func = [SchemeVal] -> ReturnVal
 type ReturnVal = Either String SchemeVal
 instance Show SchemeVal where
@@ -59,12 +67,10 @@ instance ToStr Define where
                                             , tostr (i+1) exp]
     tostr i (DefFn id prms body) = unlines1 [indentN i <> "DefFn", showChild (i+1) id, tostr (i+1) prms, tostr (i+1) body]
 
-instance ToStr Params where
-    tostr i (Params ids mid) = indentN i <> "Params" <> show ids <> ", " <> show mid
 instance ToStr Exp where
     tostr i (ExpConst c) = unlines1 [indentN i <> "Exp(Const)", tostr i c]
     tostr i (ExpId id) = unlines1 [indentN i <> "Exp(Id)", showChild (i+1) id]
-    tostr i (Lambda (Arg ids id,body)) = unlines1 [indentN i <> "Exp(Lambda)" 
+    tostr i (Lambda (Params ids id,body)) = unlines1 [indentN i <> "Exp(Lambda)" 
                                                     ,indentN (i+1) <> "Args"
                                                     ,indentN (i+2) <> show ids <> " " <> show id
                                                     , tostr (i+1) body]
@@ -85,8 +91,8 @@ instance ToStr Branch where
                                         ,tostr (i+1) cond
                                         ,indentN (i+1) <> "operation"
                                         ,tostr (i+1) opr]
-instance ToStr Arg where
-    tostr i (Arg args rest) = unlines1 [indentN i <> "Args"
+instance ToStr Params where
+    tostr i (Params args rest) = unlines1 [indentN i <> "Args"
                                         , indentN (i+1) <> show args
                                         , indentN (i+1) <> show rest]
 

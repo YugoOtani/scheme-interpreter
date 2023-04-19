@@ -31,11 +31,11 @@ deffn = inBrace $ do
     space0 >> P.char '(' >> space0
     id' <- pId
     space0  -- ')' might appear
-    prms <- pparams 
+    prms <- pargFn 
     space0 >> P.char ')' >> space0
     DefFn id' prms <$> pbody
 
-pparams = do
+pargFn = do
     ids <- list0 space1 pId
     id' <- P.opt (space1 *> P.char '.' *> space1 *> pId)
     return $ Params ids id'
@@ -59,11 +59,11 @@ pquote = inBrace (do
     space0
     Quote <$> psexp) <|> Quote <$> (P.char '\'' *> psexp)
 pbody = Body <$> many pdef <*> some pexp 
-parg = ((\a -> Arg [a] Nothing) <$> pId)
+parg = ((\a -> Params [a] Nothing) <$> pId)
     <|> inBrace (do
             ids <- list0 space1 pId
             rest <- P.opt (space1 *> P.char '.' *> space1 *> pId)
-            return $ Arg ids rest
+            return $ Params ids rest
         )
 psexp = (SConst <$> pconst) <|> (SId <$> pId)
         <|> inBrace (do
