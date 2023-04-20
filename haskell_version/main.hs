@@ -11,20 +11,25 @@ toSchemeVal :: Env -> [Char] -> SchemeVal
 toSchemeVal root "+"  = BuiltInFunc $ \args -> do
                         a <- forM args (\e -> case e of
                                 Const (Num i) -> Right i
-                                _ -> Left "'+' can only be applied between numbers")
+                                _ -> Left "[+] can only be applied between numbers")
                         Right $ Const $ Num $ sum' a 
 toSchemeVal root "-" = BuiltInFunc f where
-                        f [] = Left "'-' must have 1 argument"
+                        f [] = Left "[-] must have 1 argument"
                         f (Const (Num NaN) : xs) = Right $ Const $ Num NaN
                         f (Const (Num (Integer i)) : xs) = do
                             a <- forM xs (\e -> case e of
                                 Const (Num i) -> Right i
-                                _ -> Left "'-' can only be applied between numbers")
+                                _ -> Left "[-] can only be applied between numbers")
                             let ans = case sum' a of
                                         NaN -> NaN
                                         (Integer i2) -> Integer (i - i2)
                             Right $ Const $ Num ans
                         f _ = Left "'-' can only be applied between numbers"
+toSchemeVal root "car" = BuiltInFunc f where
+                        f [List [] _] = Left "[car] cannot apply to empty list"
+                        f [List (x:xs) _] = Right x
+                        f [x] = Left "[car] can only apply to List"
+                        f s = Left $ "[car] expected 1 argument, given " <> show (length s)
 
 toSchemeVal _ _ = undefined
 
@@ -38,7 +43,7 @@ sum' = foldl' f (Integer 0) where
 
 rootFrame :: Env
 rootFrame = let root = defRootFrame root
-                defRootFrame env = Frame (Mp.fromList ((\s -> (s, toSchemeVal env s)) <$> ["+","-"])) NilFrame
+                defRootFrame env = Frame (Mp.fromList ((\s -> (s, toSchemeVal env s)) <$> ["+","-","car"])) NilFrame
             in root
 
 findVal :: Env -> String -> Maybe SchemeVal
@@ -130,8 +135,20 @@ instance Eval Exp where
         case setVal env' s val of
             Just env'' -> Right (Const Nil, env'')
             Nothing -> Left $ "could not find value [" <> s <>"]"
+    eval env (Quote sexp) = eval env sexp
     eval env a = Left $ show a <> " is not defined" 
 
+instance Eval SExp where
+    eval env (SConst c) = Right (Const c,env)
+    eval env (SId id) = Right (Sym id,env)
+    eval env (SList exps mexp) = do
+        (vals,env') <- evalList env exps
+        case mexp of 
+            Nothing -> return (List vals Nothing, env')
+            Just y -> do
+                (yval, env'') <- eval env' y
+                return (List vals (Just yval), env'')
+        
 evalList ::  Eval a => Env -> [a] -> Either String ([SchemeVal],Env)
 evalList env [] = Right ([],env) 
 evalList env (x:xs) = do
@@ -148,7 +165,7 @@ zipArgs params Nothing args = if length args /= length params
 zipArgs params (Just (Id id)) args = if length args < length params 
                                     then Left $ "not enough argument : expected " <> show (length params) <> " or more, given " <> show (length args)
                                     else let (args', rest) = splitAt (length params) args 
-                                            in Right $ (id, List rest) : zip (fromId <$> params) args
+                                            in Right $ (id, List rest Nothing) : zip (fromId <$> params) args
 
 instance Eval Id where
     eval env (Id id) = case findVal env id of

@@ -1,6 +1,6 @@
 module Token where
 import qualified Data.Text as T
-import Data.Map
+import qualified Data.Map as Mp
 data Toplevel = TopExp !Exp | TopDefine !Define | Load !String deriving Show
 data Define = DefVar !Id !Exp 
             | DefFn !Id !Params !Body deriving Show
@@ -31,22 +31,34 @@ instance Show Number where
 instance Show Const where
     show (Num i) = show i
     show (Bool b) = if b then "#t" else "#f"
-    show (String s) = s
+    show (String s) =  "\"" <> s <> "\""
     show Nil = "()"
 newtype Id = Id String deriving Show
 
-data SchemeVal = Const !Const | List ![SchemeVal] | Closure !(Env,Lambda) | BuiltInFunc !Func
+data SchemeVal = Const !Const 
+                | List ![SchemeVal] (Maybe SchemeVal)
+                | Sym !Id
+                | Closure !(Env,Lambda) 
+                | BuiltInFunc !Func
 type Lambda = (Params, Body)
 type Func = [SchemeVal] -> ReturnVal
 type ReturnVal = Either String SchemeVal
 instance Show SchemeVal where
     show (Const c) = show c
-    show (List l) = show l
+    show (List [] (Just _)) = error "this pattern must be excluded in parse"
+    show (List [] Nothing) = "()"
+    show (List (x:xs) (Just y)) = "(" <> show x
+                                      <> foldl (\acc e -> acc <> " " <> show e) "" xs
+                                      <> " . " <> show y <> ")"
+    show (List (x:xs) Nothing) = "(" <> show x
+                                     <> foldl (\acc e -> acc <> " " <> show e) "" xs
+                                     <> ")"
+    show (Sym (Id s)) = s
     show (Closure _) = "#<procedure>"
     show (BuiltInFunc _) = "#<procedure>"
 
 
-type Variables = Map String SchemeVal
+type Variables = Mp.Map String SchemeVal
 data Env = Frame !Variables !Env | NilFrame deriving Show
 instance ToStr Env where
     tostr i NilFrame = indentN i <> "Nil"
@@ -95,7 +107,7 @@ instance ToStr Binding where
     tostr i (Binding id exp) = unlines1 [indentN i <> "Binding " <> show id, tostr (i+1) exp]
 instance ToStr SExp where
     tostr i (SConst c ) = unlines1 [indentN i <> "SExp(Const)", tostr (i+1) c]
-    tostr i (SId id ) = unlines1 [indentN i <> "SExp(Id)" , show id]
+    tostr i (SId id ) = unlines1 [indentN i <> "SExp(Id)" , indentN (i+1) <> show id]
     tostr i (SList sexps sexp) = unlines1 [indentN i <> "SExp(List)"
                                             ,tostr (i+1) sexps
                                             ,tostr (i+1) sexp]

@@ -41,7 +41,9 @@ deffn = inparen $ do
 pargFn = do
     ids <- list0 space1 pId
     id' <- P.opt (space1 *> P.char '.' *> space1 *> pId)
-    return $ Params ids id'
+    case (ids,id') of
+        ([],Just _ ) -> P.fail "illeagal use of '.'"
+        _ -> return $ Params ids id'
 pexp = (ExpConst <$> pconst)
     <|> (ExpId <$> pId)
     <|> plambda
@@ -144,13 +146,17 @@ parg = ((\a -> Params [a] Nothing) <$> pId)
     <|> inparen (do
             ids <- list0 space1 pId
             rest <- P.opt (space1 *> P.char '.' *> space1 *> pId)
-            return $ Params ids rest
+            case (ids,rest) of
+                ([],Just _) -> P.fail "illeagal use of '.'"
+                _ -> return $ Params ids rest
         )
 psexp = (SConst <$> pconst) <|> (SId <$> pId)
         <|> inparen (do
                 exps <- list0 endOfToken psexp
                 rest <- P.opt (space1 *> P.char '.' *> endOfToken *> psexp)
-                return $ SList exps rest
+                case (exps,rest) of
+                    ([],Just _) -> P.fail "illeagal use of '.'"
+                    _ -> return $ SList exps rest
             )
 pconst = (Num  <$> pnum) <|> (Bool <$> pbool) <|> (String <$> pstr) <|> (Nil <$ pnil) 
 pnil = P.char '(' *> space0 *> P.char ')' >> return ()
