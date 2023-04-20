@@ -48,6 +48,15 @@ findVal (Frame values f ) s = case Mp.lookup s values of
                 Just v -> Just v
                 Nothing -> findVal f s
 
+exist s mp = case Mp.lookup s mp of
+    Nothing -> False
+    Just _ -> True
+
+setVal :: Env -> String -> SchemeVal -> Maybe Env
+setVal NilFrame _ _ = Nothing
+setVal (Frame vars par) s val = if exist s vars 
+                                    then Just $ Frame (Mp.insert s val vars) par
+                                    else setVal par s val
 
 main = do
     loop 1 rootFrame where
@@ -61,9 +70,9 @@ main = do
                         putStrLn l
                         loop (i+1) env
                     Right (r,newEnv) -> do
-                        putStrLn $ tostr 0 parseRes
+                        --putStrLn $ tostr 0 parseRes
                         print r   -- TODO:defineなどreturn typeがないとき
-                        putStrLn $ "env:\n" <> tostr 0 newEnv
+                        -- putStrLn $ "env:\n" <> tostr 0 newEnv
                         loop (i+1) newEnv
                 Left _ -> do
                     putStrLn "parse error"
@@ -104,7 +113,7 @@ instance Eval Exp where
         case res of 
             BuiltInFunc f -> do
                     ret <- f args'
-                    return (ret, env'')
+                    return (ret, env) -- 副作用なし
             Closure (parEnv,(Params ids mid, Body defs exps)) ->   -- evaluate defs -> exps
                     if null exps then error "body has no exp" -- see TokenParser.hs.pbody
                     else do
@@ -116,6 +125,11 @@ instance Eval Exp where
                     
                     
             e ->  Left $ show e <> "is not a procedure"
+    eval env (Set (Id s) exp) = do
+        (val, env') <- eval env exp
+        case setVal env' s val of
+            Just env'' -> Right (Const Nil, env'')
+            Nothing -> Left $ "could not find value [" <> s <>"]"
     eval env a = Left $ show a <> " is not defined" 
 
 evalList ::  Eval a => Env -> [a] -> Either String ([SchemeVal],Env)

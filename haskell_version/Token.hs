@@ -8,7 +8,7 @@ data Exp = ExpConst !Const
          | ExpId !Id
          | Lambda !Lambda
          | Quote !SExp
-         {- | Set !Id !Exp
+         | Set !Id !Exp
          | Let !(Maybe Id) ![Binding] !Body
          | Let2 ![Binding] !Body
          | LetRec ![Binding] !Body
@@ -16,9 +16,9 @@ data Exp = ExpConst !Const
          | Cond ![Branch] !(Maybe [Exp])
          | And ![Exp]
          | Or ![Exp]
-         | Begin ![Exp]-}
+         | Begin ![Exp]
          | FnCall !Exp ![Exp] deriving Show
-         
+data Binding = Binding !Id !Exp deriving Show
 data Branch = Branch !Exp ![Exp] deriving Show
 data Body = Body ![Define] ![Exp] deriving Show
 data Params = Params ![Id] !(Maybe Id) deriving Show
@@ -81,6 +81,18 @@ instance ToStr Exp where
     tostr i (FnCall exp exps) = unlines1 [indentN i <> "Exp(FnCall1)"
                                         , tostr (i+1) exp, tostr (i+1) exps]
 
+    tostr i (Set id exp) = unlines1 [indentN i <> "Exp(Set)", indentN (i+1) <> show id, tostr (i+1) exp]
+    tostr i (Let id binds body) = unlines1 [indentN i <> "Let", indentN (i+1) <> show id, tostr (i+1) binds,tostr (i+1) body]
+    tostr i (Let2 binds body) = unlines1 [indentN i <> "Let2", tostr (i+1) binds, tostr (i+1) body]
+    tostr i (LetRec binds body )  = unlines1 [indentN i <> "LetRec", tostr (i+1) binds, tostr (i+1) body]
+    tostr i (If exp1 exp2 exp3) = unlines1 [indentN i <> "If", tostr (i+1) exp1, tostr (i+1) exp2, tostr (i+1) exp3]
+    tostr i (Cond branch exp) = unlines1 [indentN i <> "Cond", tostr (i+1) branch, tostr (i+1) exp]
+    tostr i (And exp) = unlines1 [indentN i <> "And", tostr (i+1) exp]
+    tostr i (Or exp) = unlines1 [indentN i <> "Or", tostr (i+1) exp]
+    tostr i (Begin exp) = unlines1 [indentN i <> "Begin", tostr (i+1) exp]
+
+instance ToStr Binding where
+    tostr i (Binding id exp) = unlines1 [indentN i <> "Binding " <> show id, tostr (i+1) exp]
 instance ToStr SExp where
     tostr i (SConst c ) = unlines1 [indentN i <> "SExp(Const)", tostr (i+1) c]
     tostr i (SId id ) = unlines1 [indentN i <> "SExp(Id)" , show id]
