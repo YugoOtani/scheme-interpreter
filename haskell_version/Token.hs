@@ -36,29 +36,31 @@ instance Show Const where
 newtype Id = Id String deriving Show
 
 data SchemeVal = Const !Const 
-                | List ![SchemeVal] (Maybe SchemeVal)
+                | Pair Pair
                 | Sym !Id
                 | Closure !(Env,Lambda) 
                 | BuiltInFunc !Func
                 | None
+type Pair = (SchemeVal ,SchemeVal)
 type Lambda = (Params, Body)
 type Func = [SchemeVal] -> ReturnVal
 type ReturnVal = Either String SchemeVal
+
 instance Show SchemeVal where
     show (Const c) = show c
-    show (List [] (Just _)) = error "this pattern must be excluded in parse"
-    show (List [] Nothing) = "()"
-    show (List (x:xs) (Just y)) = "(" <> show x
-                                      <> foldl (\acc e -> acc <> " " <> show e) "" xs
-                                      <> " . " <> show y <> ")"
-    show (List (x:xs) Nothing) = "(" <> show x
-                                     <> foldl (\acc e -> acc <> " " <> show e) "" xs
-                                     <> ")"
+    show (Pair p) = "(" <> showSchemeList (pairToList p) <> ")"
     show (Sym (Id s)) = s
     show (Closure _) = "#<procedure>"
     show (BuiltInFunc _) = "#<procedure>"
     show None = "(none)" 
 
+showSchemeList [] = ""
+showSchemeList (v:[Const Nil]) = show v
+showSchemeList [v,v2] = show v <> " . " <> show v2
+showSchemeList (car:cdr) = show car <> " " <> showSchemeList cdr
+pairToList (car, cdr) = case cdr of
+    Pair p -> car:pairToList p
+    s -> car:[s]
 
 type Variables = Mp.Map String SchemeVal
 data Env = Frame !Variables !Env | NilFrame deriving Show

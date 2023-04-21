@@ -65,14 +65,12 @@ toSchemeVal root "-" = BuiltInFunc f where
                             Right $ Const $ Num ans
                         f _ = Left "'-' can only be applied between numbers"
 toSchemeVal root "car" = BuiltInFunc f where
-                        f [List [] _] = Left "[car] cannot apply to empty list"
-                        f [List (x:xs) _] = Right x
+                        f [Pair (h,t)] = Right h
                         f [x] = Left "[car] can only be applied to List"
                         f s = Left $ "[car] expected 1 argument, given " <> show (length s)
 
 toSchemeVal root "cdr" = BuiltInFunc f where
-                        f [List [] _] = Left "[cdr] cannot apply to empty list"
-                        f [List (x:xs) _] = Right $ List xs Nothing
+                        f [Pair (h,t)] = Right t
                         f [x] = Left "[car] can only be applied to List"
                         f s = Left $ "[car] expected 1 argument, given " <> show (length s)
 toSchemeVal root "number?" = BuiltInFunc f where
@@ -263,11 +261,12 @@ instance Eval SExp where
     eval (SId id) = return $ Sym id
     eval (SList exps mexp) = do
         vals <- forM exps eval
-        case mexp of 
-            Nothing -> return $ List vals Nothing
-            Just y -> do
-                yval <- eval y
-                return $ List vals (Just yval)
+        case mexp of
+            Nothing -> return $ listToPair vals Nothing
+            Just t -> do
+                tail <- eval t
+                return $ listToPair vals (Just tail)
+
         
 fromId (Id s) = s
 
@@ -279,8 +278,10 @@ zipArgs params Nothing args = if length args /= length params
 zipArgs params (Just (Id id)) args = if length args < length params 
                                     then Left $ "not enough argument : expected " <> show (length params) <> " or more, given " <> show (length args)
                                     else let (args', rest) = splitAt (length params) args 
-                                            in Right $ (id, List rest Nothing) : zip (fromId <$> params) args
-
+                                            in Right $ (id, listToPair rest Nothing) : zip (fromId <$> params) args
+listToPair [] (Just t) = t
+listToPair [] Nothing = Const Nil
+listToPair (x:xs) t = Pair (x, listToPair xs t)
 instance Eval Id where
     eval (Id id) = do
         env <- getEnv
