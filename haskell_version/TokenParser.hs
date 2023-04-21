@@ -9,14 +9,20 @@ import Data.Char as Ch
 import Control.Monad
 
 parse :: String -> Either String Toplevel
-parse s = case dropWhileEnd Ch.isSpace s .>. ptop of 
+parse s = case s .>. (space0 *> ptop <* space0) of 
     Left err -> Left $ "parse error [" <> err <> "]" 
     Right ("",res) -> Right res
     Right (s, _) -> Left $ "[" <> s <> "] remains untaken"
 
+parseMany :: String -> Either String [Toplevel]
+parseMany "" = Right []
+parseMany s = do
+    (rest,top) <- s .>. (space0 *> ptop <* space0)
+    tops <- parseMany rest
+    return $ top:tops
 
-ptop = space0 *> 
-    (TopDefine <$> pdef)
+
+ptop = (TopDefine <$> pdef)
     <|> (Load <$> inparen (P.str "load" *> space1 *> pstr))
     <|> (TopExp <$> pexp)
 -- maybe need to revise 

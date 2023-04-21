@@ -1,6 +1,5 @@
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 {-# HLINT ignore "Use lambda-case" #-}
-{-# LANGUAGE InstanceSigs #-}
 import Parser
 import TokenParser
 import Token
@@ -13,21 +12,38 @@ main = do
         loop i env = do
             putStr $ "Haskeme[" <> show i <> "] > "
             input <- getLine
-            case parse input of
-                Right parseRes -> case evalInput env parseRes of
-                    Left l -> do
-                        putStrLn $ tostr 0 parseRes
-                        putStrLn l
-                        loop (i+1) env
-                    Right (r,newEnv) -> do
-                        -- putStrLn $ tostr 0 parseRes
-                        print r   -- TODO:defineなどreturn typeがないとき
-                        -- putStrLn $ "env:\n" <> tostr 0 newEnv
-                        loop (i+1) newEnv
-                Left _ -> do
-                    putStrLn "parse error"
-                    loop (i+1) env
-                
+            newEnv <- exec env input
+            loop (i+1) newEnv
+
+exec env input = case parse input of
+    Right (Load fname) -> do
+        s <- readFile fname
+        case parseMany s of
+            Left err -> do
+                putStrLn err
+                return env
+            Right tops -> do
+                case run (forM_ tops eval) env of
+                    Left err -> do
+                        putStrLn err
+                        return env
+                    Right (_,newEnv) -> do
+                        putStrLn "[load] success"
+                        return newEnv
+
+    Right parseRes -> case evalInput env parseRes of
+                        Left l -> do
+                            putStrLn $ tostr 0 parseRes
+                            putStrLn l
+                            return env
+                        Right (r,newEnv) -> do
+                            -- putStrLn $ tostr 0 parseRes
+                            print r 
+                            -- putStrLn $ "env:\n" <> tostr 0 newEnv
+                            return newEnv
+    Left l -> do
+        putStrLn $ "parse error" <> l
+        return env
 
 
 toSchemeVal :: Env -> [Char] -> SchemeVal
@@ -116,12 +132,12 @@ rootFrame :: Env
 rootFrame = let root = defRootFrame root
                 defRootFrame env = Frame 
                                 (Mp.fromList ((\s -> (s, toSchemeVal env s)) 
-                                    <$> ["+","-","car"{-, "cdr","*","/","=","<","<=",">",">=",
+                                    <$> ["+","-","car", "cdr","*","/","=","<","<=",">",">=",
                                         "number?","null?","pair?","list?","symbol?","cons","list",
                                         "length","memq","last","append","set-car!","set-cdr!",
                                         "boolean?","not","string?","string-append","symbol->string",
                                         "string->symbol","string->number","number->string","procedure?",
-                                        "eq?","neq?","equal?"-} ])) 
+                                        "eq?","neq?","equal?" ])) 
                                 NilFrame
             in root
 
@@ -182,7 +198,7 @@ class Eval a where
 instance Eval Toplevel where
     eval (TopExp exp)= eval exp
     eval (TopDefine def) = eval def
-    eval (Load fname) = undefined
+    eval (Load fname) = error "load must be defined in main"
 
 instance Eval Define where
     eval (DefVar (Id id) exp) = do 
@@ -208,7 +224,7 @@ instance Eval Exp where
     eval (ExpId id) = eval id
     eval (ExpConst c) = eval c
     eval (FnCall fn args) = do
-        fn' <- eval fn --env?
+        fn' <- eval fn 
         args' <-  forM args eval --env
         case fn' of 
             BuiltInFunc f -> do
