@@ -7,6 +7,28 @@ import qualified Data.Map as Mp
 import Control.Monad (forM, forM_)
 import Data.List
 
+main = do
+    loop 1 rootFrame where
+        loop i env = do
+            putStr $ "Haskeme[" <> show i <> "] > "
+            input <- getLine
+            case parse input of
+                Right parseRes -> case eval env parseRes of
+                    Left l -> do
+                        putStrLn $ tostr 0 parseRes
+                        putStrLn l
+                        loop (i+1) env
+                    Right (r,newEnv) -> do
+                        -- putStrLn $ tostr 0 parseRes
+                        print r   -- TODO:defineなどreturn typeがないとき
+                        -- putStrLn $ "env:\n" <> tostr 0 newEnv
+                        loop (i+1) newEnv
+                Left _ -> do
+                    putStrLn "parse error"
+                    loop (i+1) env
+                
+
+
 toSchemeVal :: Env -> [Char] -> SchemeVal
 toSchemeVal root "+"  = BuiltInFunc $ \args -> do
                         a <- forM args (\e -> case e of
@@ -28,9 +50,52 @@ toSchemeVal root "-" = BuiltInFunc f where
 toSchemeVal root "car" = BuiltInFunc f where
                         f [List [] _] = Left "[car] cannot apply to empty list"
                         f [List (x:xs) _] = Right x
-                        f [x] = Left "[car] can only apply to List"
+                        f [x] = Left "[car] can only be applied to List"
                         f s = Left $ "[car] expected 1 argument, given " <> show (length s)
 
+toSchemeVal root "cdr" = BuiltInFunc f where
+                        f [List [] _] = Left "[cdr] cannot apply to empty list"
+                        f [List (x:xs) _] = Right $ List xs Nothing
+                        f [x] = Left "[car] can only be applied to List"
+                        f s = Left $ "[car] expected 1 argument, given " <> show (length s)
+toSchemeVal root "number?" = BuiltInFunc f where
+                        f [Const (Num a)] = Right $ Const $ Bool True
+                        f _ = Right $ Const $ Bool False
+toSchemeVal root "*"  = BuiltInFunc $ \args -> do
+                        a <- forM args (\e -> case e of
+                                Const (Num i) -> Right i
+                                _ -> Left "[+] can only be applied between numbers")
+                        Right $ Const $ Num $ product' a 
+toSchemeVal root "/" = None
+toSchemeVal root "=" = None
+toSchemeVal root "<" = None
+toSchemeVal root "<=" = None
+toSchemeVal root ">" = None
+toSchemeVal root ">=" = None
+toSchemeVal root "null?" = None
+toSchemeVal root "pair?" = None
+toSchemeVal root "list?" = None
+toSchemeVal root "symbol?" = None
+toSchemeVal root "cons" = None
+toSchemeVal root "list" = None
+toSchemeVal root "length" = None
+toSchemeVal root "memq" = None
+toSchemeVal root "last" = None
+toSchemeVal root "append" = None
+toSchemeVal root "set-car!" = None
+toSchemeVal root "set-cdr!" = None
+toSchemeVal root "boolean?" = None
+toSchemeVal root "not" = None
+toSchemeVal root "string?" = None
+toSchemeVal root "string-append" = None
+toSchemeVal root "symbol->string" = None
+toSchemeVal root "string->symbol" = None
+toSchemeVal root "string->number" = None
+toSchemeVal root "number->string" = None
+toSchemeVal root "procedure?" = None
+toSchemeVal root "eq?" = None
+toSchemeVal root "neq?" = None
+toSchemeVal root "equal?" = None
 toSchemeVal _ _ = undefined
 
                                                             
@@ -40,10 +105,23 @@ sum' = foldl' f (Integer 0) where
     f _ NaN = NaN
     f (Integer acc) (Integer i) = Integer (acc + i)
 
+product' :: [Number] -> Number
+product' = foldl' f (Integer 1) where
+    f NaN _ = NaN
+    f _ NaN = NaN
+    f (Integer acc) (Integer i) = Integer (acc * i)
 
 rootFrame :: Env
 rootFrame = let root = defRootFrame root
-                defRootFrame env = Frame (Mp.fromList ((\s -> (s, toSchemeVal env s)) <$> ["+","-","car"])) NilFrame
+                defRootFrame env = Frame 
+                                (Mp.fromList ((\s -> (s, toSchemeVal env s)) 
+                                    <$> ["+","-","car","cdr","*","/","=","<","<=",">",">=",
+                                        "number?","null?","pair?","list?","symbol?","cons","list",
+                                        "length","memq","last","append","set-car!","set-cdr!",
+                                        "boolean?","not","string?","string-append","symbol->string",
+                                        "string->symbol","string->number","number->string","procedure?",
+                                        "eq?","neq?","equal?"])) 
+                                NilFrame
             in root
 
 findVal :: Env -> String -> Maybe SchemeVal
@@ -63,26 +141,6 @@ setVal (Frame vars par) s val = if exist s vars
                                     then Just $ Frame (Mp.insert s val vars) par
                                     else setVal par s val
 
-main = do
-    loop 1 rootFrame where
-        loop i env = do
-            putStr $ "Haskeme[" <> show i <> "] > "
-            input <- getLine
-            case parse input of
-                Right parseRes -> case eval env parseRes of
-                    Left l -> do
-                        putStrLn $ tostr 0 parseRes
-                        putStrLn l
-                        loop (i+1) env
-                    Right (r,newEnv) -> do
-                        --putStrLn $ tostr 0 parseRes
-                        print r   -- TODO:defineなどreturn typeがないとき
-                        -- putStrLn $ "env:\n" <> tostr 0 newEnv
-                        loop (i+1) newEnv
-                Left _ -> do
-                    putStrLn "parse error"
-                    loop (i+1) env
-                
 
 evalInput :: Env -> Toplevel -> Either String (SchemeVal, Env)
 evalInput = eval
@@ -103,11 +161,11 @@ instance Eval Define where
         case env2 of
             NilFrame -> error "nilframe was given as environment[Define2]"
             (Frame vars cld) -> let newVars = Mp.insert id val vars in 
-                                return (Const Nil,Frame newVars cld) -- ?
+                                return (None,Frame newVars cld) -- ?
     eval env@(Frame vars cld ) (DefFn (Id id) arg body) = do
         let closure = Closure (env,(arg, body))
         let newVars = Mp.insert id closure vars
-        return (Const Nil, Frame newVars cld)
+        return (None, Frame newVars cld)
 -- envを指していたフレームは？
 instance Eval Exp where
     eval env (ExpId id) = eval env id
@@ -127,13 +185,14 @@ instance Eval Exp where
                         (_, newEnv') <- evalList newEnv defs
                         (expres, newEnv'') <- evalList newEnv' exps
                         return (last expres, env) -- envだと副作用がなくなる
-                    
+                         
+                        -- (define (f y) (define x y) (define z x) (+ x y z)) これがエラーにならない
                     
             e ->  Left $ show e <> "is not a procedure"
     eval env (Set (Id s) exp) = do
         (val, env') <- eval env exp
         case setVal env' s val of
-            Just env'' -> Right (Const Nil, env'')
+            Just env'' -> Right (None, env'')
             Nothing -> Left $ "could not find value [" <> s <>"]"
     eval env (Quote sexp) = eval env sexp
     eval env a = Left $ show a <> " is not defined" 

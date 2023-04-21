@@ -40,6 +40,7 @@ data SchemeVal = Const !Const
                 | Sym !Id
                 | Closure !(Env,Lambda) 
                 | BuiltInFunc !Func
+                | None
 type Lambda = (Params, Body)
 type Func = [SchemeVal] -> ReturnVal
 type ReturnVal = Either String SchemeVal
@@ -56,6 +57,7 @@ instance Show SchemeVal where
     show (Sym (Id s)) = s
     show (Closure _) = "#<procedure>"
     show (BuiltInFunc _) = "#<procedure>"
+    show None = "(none)" 
 
 
 type Variables = Mp.Map String SchemeVal

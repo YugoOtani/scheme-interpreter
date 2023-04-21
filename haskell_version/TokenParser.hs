@@ -32,11 +32,11 @@ defvar = inparen $ do
 deffn = inparen $ do
     P.str "define"
     endOfToken >> P.char '(' >> space0
-    id' <- pId
-    endOfToken
-    prms <- pargFn 
-    space0 >> P.char ')'
-    DefFn id' prms <$> pbody
+    id' <- pId 
+    space0
+    args <- pargFn
+    space0 *> P.char ')' *> space0
+    DefFn id' args <$> pbody
 
 pargFn = do
     ids <- list0 space1 pId
@@ -141,7 +141,7 @@ pquote = inparen (do
     P.str "quote"
     endOfToken
     Quote <$> psexp) <|> Quote <$> (P.char '\'' *> psexp)
-pbody = Body <$> list0 endOfToken pdef <*> (endOfToken *> list1 endOfToken pexp)
+pbody = Body <$> list0 endOfToken pdef <*> (space0 *> list1 endOfToken pexp)
 parg = ((\a -> Params [a] Nothing) <$> pId)
     <|> inparen (do
             ids <- list0 space1 pId
@@ -186,30 +186,9 @@ endOfToken = do
         Just c -> P.fail $ "end of token expected, given '" <> show c <> "'" 
 space0 = many $ P.takeIf Ch.isSpace
 space1 = some $ P.takeIf Ch.isSpace
-splitedBySpace2 pa pb = do
-    a <- pa
-    space1
-    b <- pb
-    return (a, b)
-splitedBySpace3 pa pb pc = do
-    a <- pa
-    space1
-    b <- pb
-    space1
-    c <- pc
-    return (a, b, c)
 
 
 
-splitedBySpace4 pa pb pc pd = do
-    a <- pa
-    space1
-    b <- pb
-    space1
-    c <- pc
-    space1
-    d <- pd
-    return (a, b, c, d)
 inparen p = P.char '(' *> space0 *> p <* space0 <* P.char ')'
 
 list2 :: P.Parser a -> P.Parser b -> P.Parser [b]
