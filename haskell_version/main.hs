@@ -1,5 +1,6 @@
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 {-# HLINT ignore "Use lambda-case" #-}
+{-# LANGUAGE InstanceSigs #-}
 import Parser
 import TokenParser
 import Token
@@ -13,7 +14,7 @@ main = do
             putStr $ "Haskeme[" <> show i <> "] > "
             input <- getLine
             case parse input of
-                Right parseRes -> case eval env parseRes of
+                Right parseRes -> case evalInput env parseRes of
                     Left l -> do
                         putStrLn $ tostr 0 parseRes
                         putStrLn l
@@ -115,12 +116,12 @@ rootFrame :: Env
 rootFrame = let root = defRootFrame root
                 defRootFrame env = Frame 
                                 (Mp.fromList ((\s -> (s, toSchemeVal env s)) 
-                                    <$> ["+","-","car","cdr","*","/","=","<","<=",">",">=",
+                                    <$> ["+","-","car"{-, "cdr","*","/","=","<","<=",">",">=",
                                         "number?","null?","pair?","list?","symbol?","cons","list",
                                         "length","memq","last","append","set-car!","set-cdr!",
                                         "boolean?","not","string?","string-append","symbol->string",
                                         "string->symbol","string->number","number->string","procedure?",
-                                        "eq?","neq?","equal?"])) 
+                                        "eq?","neq?","equal?"-} ])) 
                                 NilFrame
             in root
 
@@ -143,77 +144,115 @@ setVal (Frame vars par) s val = if exist s vars
 
 
 evalInput :: Env -> Toplevel -> Either String (SchemeVal, Env)
-evalInput = eval
+evalInput env top = run (eval top) env
 
+newtype EResult a = EResult {run :: Env -> Either String (a, Env)}
+instance Functor EResult where
+    fmap f (EResult s) = EResult $ \e -> do
+        (a, env) <- s e
+        return (f a, env)
+
+instance Applicative EResult where
+    pure a = EResult $ \e -> Right (a, e)
+    EResult ab <*> EResult a = EResult $ \env1 -> do
+        (ab', env2) <- ab env1
+        (a' , env3) <- a env2
+        return (ab' a', env3)
+
+instance Monad EResult where
+    return a = EResult $ \e -> Right (a,e)
+    EResult a >>= ab = EResult $ \env1 -> do
+        (a',env2) <- a env1
+        let (EResult b) = ab a'
+        (b', env3) <- b env2
+        return (b',env3)
+
+efail :: String -> EResult a
+efail s = EResult $ \_ -> Left s 
+
+getEnv :: EResult Env
+getEnv = EResult $ \e -> Right (e,e)
+
+setEnv :: Env -> EResult ()
+setEnv e = EResult $ \e2 -> Right ((),e)
 
 class Eval a where
-    eval :: Env -> a -> Either String (SchemeVal,Env)
+    eval :: a -> EResult SchemeVal
 
 instance Eval Toplevel where
-    eval env (TopExp exp)= eval env exp
-    eval env (TopDefine def) = eval env def
-    eval env (Load fname) = undefined
+    eval (TopExp exp)= eval exp
+    eval (TopDefine def) = eval def
+    eval (Load fname) = undefined
 
 instance Eval Define where
-    eval NilFrame _ = error "nilframe was given as environment[Define1]"
-    eval env (DefVar (Id id) exp) = do -- env env2...?
-        (val,env2) <- eval env exp
-        case env2 of
+    eval (DefVar (Id id) exp) = do 
+        val <- eval exp
+        env <- getEnv
+        case env of
             NilFrame -> error "nilframe was given as environment[Define2]"
-            (Frame vars cld) -> let newVars = Mp.insert id val vars in 
-                                return (None,Frame newVars cld) -- ?
-    eval env@(Frame vars cld ) (DefFn (Id id) arg body) = do
-        let closure = Closure (env,(arg, body))
-        let newVars = Mp.insert id closure vars
-        return (None, Frame newVars cld)
+            (Frame vars par) -> do
+                setEnv $ Frame (Mp.insert id val vars) par
+                return None
+
+    eval (DefFn (Id id) arg body) = do
+        env <- getEnv
+        case env of
+            NilFrame -> error "nilframe was given as environment[Define2]"
+            Frame vars par -> do
+                let closure = Closure (env,(arg, body))
+                let newVars = Mp.insert id closure vars
+                setEnv $ Frame newVars par
+                return None
 -- envを指していたフレームは？
 instance Eval Exp where
-    eval env (ExpId id) = eval env id
-    eval env (ExpConst c) = eval env c
-    eval env (FnCall fn args) = do
-        (res, env') <- eval env fn --env?
-        (args',env'') <-  evalList env' args
-        case res of 
+    eval (ExpId id) = eval id
+    eval (ExpConst c) = eval c
+    eval (FnCall fn args) = do
+        fn' <- eval fn --env?
+        args' <-  forM args eval --env
+        case fn' of 
             BuiltInFunc f -> do
-                    ret <- f args'
-                    return (ret, env) -- 副作用なし
-            Closure (parEnv,(Params ids mid, Body defs exps)) ->   -- evaluate defs -> exps
-                    if null exps then error "body has no exp" -- see TokenParser.hs.pbody
+                    case f args' of
+                        Left l -> efail l
+                        Right r -> return r
+            Closure (parEnv,(Params ids mid, Body defs fnbody)) ->   -- evaluate defs -> exps
+                    if null fnbody then error "body has no exp" -- see TokenParser.hs.pbody
                     else do
-                        params_args <- Mp.fromList <$> zipArgs ids mid args'
-                        let newEnv = Frame params_args parEnv
-                        (_, newEnv') <- evalList newEnv defs
-                        (expres, newEnv'') <- evalList newEnv' exps
-                        return (last expres, env) -- envだと副作用がなくなる
+                        case zipArgs ids mid args' of
+                            Left l -> efail l
+                            Right params_args -> do
+                                env <- getEnv
+                                setEnv $ Frame (Mp.fromList params_args) parEnv
+                                forM_ defs eval
+                                res <- forM fnbody eval
+                                setEnv env
+                                return $ last res
                          
                         -- (define (f y) (define x y) (define z x) (+ x y z)) これがエラーにならない
                     
-            e ->  Left $ show e <> "is not a procedure"
-    eval env (Set (Id s) exp) = do
-        (val, env') <- eval env exp
-        case setVal env' s val of
-            Just env'' -> Right (None, env'')
-            Nothing -> Left $ "could not find value [" <> s <>"]"
-    eval env (Quote sexp) = eval env sexp
-    eval env a = Left $ show a <> " is not defined" 
+            e ->  efail $ show e <> "is not a procedure"
+    eval (Set (Id s) exp) = do
+        val <- eval exp
+        env <- getEnv
+        case setVal env s val of
+            Just env' -> do
+                setEnv env'
+                return None
+            Nothing -> efail $ "could not find value [" <> s <>"]"
+    eval (Quote sexp) = eval sexp
+    eval a = efail $ show a <> " is not defined" 
 
 instance Eval SExp where
-    eval env (SConst c) = Right (Const c,env)
-    eval env (SId id) = Right (Sym id,env)
-    eval env (SList exps mexp) = do
-        (vals,env') <- evalList env exps
+    eval (SConst c) = return $ Const c
+    eval (SId id) = return $ Sym id
+    eval (SList exps mexp) = do
+        vals <- forM exps eval
         case mexp of 
-            Nothing -> return (List vals Nothing, env')
+            Nothing -> return $ List vals Nothing
             Just y -> do
-                (yval, env'') <- eval env' y
-                return (List vals (Just yval), env'')
+                yval <- eval y
+                return $ List vals (Just yval)
         
-evalList ::  Eval a => Env -> [a] -> Either String ([SchemeVal],Env)
-evalList env [] = Right ([],env) 
-evalList env (x:xs) = do
-    (xval,env') <- eval env x
-    (xsval,env'') <- evalList env' xs
-    return (xval:xsval,env'')
 fromId (Id s) = s
 
 zipArgs :: [Id] -> Maybe Id -> [SchemeVal] -> Either [Char] [(Str, SchemeVal)]
@@ -227,10 +266,12 @@ zipArgs params (Just (Id id)) args = if length args < length params
                                             in Right $ (id, List rest Nothing) : zip (fromId <$> params) args
 
 instance Eval Id where
-    eval env (Id id) = case findVal env id of
-        Just v -> Right (v,env)
-        Nothing -> Left $ "could not find value [" <> id <> "]\n" <> "note : env is \n" <> tostr 0 env 
+    eval (Id id) = do
+        env <- getEnv
+        case findVal env id of
+            Just v -> return v
+            Nothing -> efail $ "could not find value [" <> id <> "]\n" <> "note : env is \n" <> tostr 0 env 
 
 
 instance Eval Const where
-    eval env c = Right (Const c, env)
+    eval c = return $ Const c
