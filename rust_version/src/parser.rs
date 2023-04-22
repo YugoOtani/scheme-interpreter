@@ -68,14 +68,17 @@ fn parse_def_var(s: &str) -> IResult<&str, Define> {
     )(s)
 }
 fn parse_def_fn(s: &str) -> IResult<&str, Define> {
-    map(in_bracket(permutation((
-        tag("define"),
-        parse_id,
-        multispace1,
-        parse_params,
-        parse_body,
-    )))
-    .map(|(_, param, body)| Define::Func()))(s)
+    /*in_bracket(
+        permutation((
+            tag("define"),
+            parse_id,
+            multispace1,
+            parse_params,
+            parse_body,
+        ))
+        .map(|(_, id, _, param, body)| Define::Func(id, param, body)),
+    )(s)*/
+    todo!()
 }
 
 fn parse_params(s: &str) -> IResult<&str, Params> {

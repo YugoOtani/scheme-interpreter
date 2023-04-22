@@ -46,13 +46,13 @@ exec env input = case parse input of
         return env
 
 
-toSchemeVal :: Env -> [Char] -> SchemeVal
-toSchemeVal root "+"  = BuiltInFunc $ \args -> do
+globFn :: Env -> [Char] -> SchemeVal
+globFn root "+"  = BuiltInFunc $ \args -> do
                         a <- forM args (\e -> case e of
                                 Const (Num i) -> Right i
                                 _ -> Left "[+] can only be applied between numbers")
                         Right $ Const $ Num $ sum' a 
-toSchemeVal root "-" = BuiltInFunc f where
+globFn root "-" = BuiltInFunc f where
                         f [] = Left "[-] must have 1 argument"
                         f (Const (Num NaN) : xs) = Right $ Const $ Num NaN
                         f (Const (Num (Integer i)) : xs) = do
@@ -64,55 +64,93 @@ toSchemeVal root "-" = BuiltInFunc f where
                                         (Integer i2) -> Integer (i - i2)
                             Right $ Const $ Num ans
                         f _ = Left "'-' can only be applied between numbers"
-toSchemeVal root "car" = BuiltInFunc f where
+globFn root "car" = BuiltInFunc f where
                         f [Pair (h,t)] = Right h
                         f [x] = Left "[car] can only be applied to List"
                         f s = Left $ "[car] expected 1 argument, given " <> show (length s)
 
-toSchemeVal root "cdr" = BuiltInFunc f where
+globFn root "cdr" = BuiltInFunc f where
                         f [Pair (h,t)] = Right t
                         f [x] = Left "[car] can only be applied to List"
                         f s = Left $ "[car] expected 1 argument, given " <> show (length s)
-toSchemeVal root "number?" = BuiltInFunc f where
+globFn root "number?" = BuiltInFunc f where
                         f [Const (Num a)] = Right $ Const $ Bool True
                         f _ = Right $ Const $ Bool False
-toSchemeVal root "*"  = BuiltInFunc $ \args -> do
+globFn root "*"  = BuiltInFunc $ \args -> do
                         a <- forM args (\e -> case e of
                                 Const (Num i) -> Right i
                                 _ -> Left "[+] can only be applied between numbers")
                         Right $ Const $ Num $ product' a 
-toSchemeVal root "/" = None
-toSchemeVal root "=" = None
-toSchemeVal root "<" = None
-toSchemeVal root "<=" = None
-toSchemeVal root ">" = None
-toSchemeVal root ">=" = None
-toSchemeVal root "null?" = None
-toSchemeVal root "pair?" = None
-toSchemeVal root "list?" = None
-toSchemeVal root "symbol?" = None
-toSchemeVal root "cons" = None
-toSchemeVal root "list" = None
-toSchemeVal root "length" = None
-toSchemeVal root "memq" = None
-toSchemeVal root "last" = None
-toSchemeVal root "append" = None
-toSchemeVal root "set-car!" = None
-toSchemeVal root "set-cdr!" = None
-toSchemeVal root "boolean?" = None
-toSchemeVal root "not" = None
-toSchemeVal root "string?" = None
-toSchemeVal root "string-append" = None
-toSchemeVal root "symbol->string" = None
-toSchemeVal root "string->symbol" = None
-toSchemeVal root "string->number" = None
-toSchemeVal root "number->string" = None
-toSchemeVal root "procedure?" = None
-toSchemeVal root "eq?" = None
-toSchemeVal root "neq?" = None
-toSchemeVal root "equal?" = None
-toSchemeVal _ _ = undefined
+globFn root "/"  = BuiltInFunc $ \args -> do
+                        a <- forM args (\e -> case e of
+                                Const (Num i) -> Right i
+                                _ -> Left "[+] can only be applied between numbers")
+                        case a of
+                            [] -> Left "[+] one or more argument is given"
+                            (x:xs) -> Right $ Const $ Num $ div' x xs
+globFn root "=" = comp (==)
+globFn root "<" = comp (<)
+globFn root "<=" = comp (<=)
+globFn root ">" = comp (>)
+globFn root ">=" = comp (>=)
+globFn root "null?" = BuiltInFunc $ \args -> case args of
+                            [Const Nil] -> Right $ Const $ Bool True
+                            [_] -> Right $ Const $ Bool False
+                            s -> Left $ "Number of argument is incorrect. Expected 1, given " <> show (length s) 
+globFn root "pair?" = BuiltInFunc $ \args -> case args of
+                            [Pair _] -> Right $ Const $ Bool True
+                            [_] -> Right $ Const $ Bool False
+                            s -> Left $ "Number of argument is incorrect. Expected 1, given " <> show (length s) 
+globFn root "list?" = BuiltInFunc $ \args -> case args of
+                            [p] -> Right $ Const $ Bool $ isList p
+                            s -> Left $ "Number of argument is incorrect. Expected 1, given " <> show (length s) 
+globFn root "symbol?" = BuiltInFunc $ \args -> case args of
+                            [Sym _] -> Right $ Const $ Bool True
+                            [_] -> Right $ Const $ Bool False
+                            s -> Left $ "Number of argument is incorrect. Expected 1, given " <> show (length s) 
+globFn root "cons" = BuiltInFunc $ \args -> case args of
+                            [car, cdr] -> Right $ Pair (car,cdr)
+                            s -> Left $ "Number of argument is incorrect. Expected 2, given " <> show (length s) 
+globFn root "list" = BuiltInFunc $ \args -> Right (listToPair args Nothing)
+globFn root "length" = BuiltInFunc $ \args -> case args of
+                            [p] ->  Const . Num . Integer <$> length' p
+                            s -> Left $ "Number of argument is incorrect. Expected 1, given " <> show (length s) 
+globFn root "memq" = BuiltInFunc $ \args -> case args of
+                            [elem,lst] -> undefined
+                            s -> Left $ "Number of argument is incorrect. Expected 1, given " <> show (length s) 
+globFn root "last" = None
+globFn root "append" = None
+globFn root "set-car!" = None
+globFn root "set-cdr!" = None
+globFn root "boolean?" = None
+globFn root "not" = None
+globFn root "string?" = None
+globFn root "string-append" = None
+globFn root "symbol->string" = None
+globFn root "string->symbol" = None
+globFn root "string->number" = None
+globFn root "number->string" = None
+globFn root "procedure?" = None
+globFn root "eq?" = None
+globFn root "neq?" = None
+globFn root "equal?" = None
+globFn _ _ = undefined
+isList (Pair (_, Const Nil)) = True
+isList (Pair (_, cld)) = isList cld
+isList _ = False
 
+length' (Pair (_, Const Nil)) = Right 1
+length' (Pair (_, p)) = (+) <$> Right 1 <*> length' p
+length' _ = Left "[length] can only be applied to list"
+
+memq elem (Pair (x, xs)) = undefined
+
+comp op = BuiltInFunc $ \args -> case args of
+                            [Const (Num NaN), _] -> Right $ Const $ Bool False
+                            [_, Const (Num NaN)] -> Right $ Const $ Bool False
+                            [Const (Num (Integer i)), Const (Num (Integer j))] -> Right $ Const $ Bool (op i j)
+                            [_,_] -> Left "[<] can only be applied between numbers"
+                            s -> Left $ "Number of argument is incorrect. Expected 2, given " <> show (length s)
                                                             
 sum' :: [Number] -> Number
 sum' = foldl' f (Integer 0) where
@@ -126,10 +164,17 @@ product' = foldl' f (Integer 1) where
     f _ NaN = NaN
     f (Integer acc) (Integer i) = Integer (acc * i)
 
+div' :: Number -> [Number] -> Number
+div' x xs = case (x, product' xs) of
+    (NaN, _) -> NaN
+    (_, NaN) -> NaN
+    (_, Integer 0) -> NaN
+    (Integer x, Integer y) -> Integer (x `div` y)
+
 rootFrame :: Env
 rootFrame = let root = defRootFrame root
                 defRootFrame env = Frame 
-                                (Mp.fromList ((\s -> (s, toSchemeVal env s)) 
+                                (Mp.fromList ((\s -> (s, globFn env s)) 
                                     <$> ["+","-","car", "cdr","*","/","=","<","<=",">",">=",
                                         "number?","null?","pair?","list?","symbol?","cons","list",
                                         "length","memq","last","append","set-car!","set-cdr!",

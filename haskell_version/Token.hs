@@ -23,8 +23,12 @@ data Branch = Branch !Exp ![Exp] deriving Show
 data Body = Body ![Define] ![Exp] deriving Show
 data Params = Params ![Id] !(Maybe Id) deriving Show
 data SExp = SConst !Const | SId !Id | SList ![SExp] !(Maybe SExp) deriving Show
-data Const = Num !Number | Bool !Bool | String !String | Nil
+data Const = Num !Number | Bool !Bool | String !String | Nil deriving Eq
 data Number = Integer !Integer | NaN 
+instance Eq Number where
+    NaN == _ = False
+    _ == NaN = False
+    Integer i == Integer j = i == j
 instance Show Number where
     show NaN = "NaN"
     show (Integer i) = show i
@@ -33,14 +37,14 @@ instance Show Const where
     show (Bool b) = if b then "#t" else "#f"
     show (String s) =  "\"" <> s <> "\""
     show Nil = "()"
-newtype Id = Id String deriving Show
+newtype Id = Id String deriving (Show,Eq)
 
 data SchemeVal = Const !Const 
-                | Pair Pair
+                | Pair !Pair
                 | Sym !Id
                 | Closure !(Env,Lambda) 
                 | BuiltInFunc !Func
-                | None
+                | None deriving Eq
 type Pair = (SchemeVal ,SchemeVal)
 type Lambda = (Params, Body)
 type Func = [SchemeVal] -> ReturnVal
