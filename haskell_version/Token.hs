@@ -6,7 +6,7 @@ pairToList (car, cdr) = case cdr of
     Pair p -> car:pairToList p
     s -> car:[s]
 listToPair [] (Just t) = t
-listToPair [] Nothing = Const Nil
+listToPair [] Nothing = PNil
 listToPair (x:xs) t = Pair (x, listToPair xs t)
 data Toplevel = TopExp !Exp | TopDefine !Define | Load !String deriving Show
 data Define = DefVar !Id !Exp 
@@ -46,19 +46,20 @@ instance Show Const where
     show Nil = "()"
 newtype Id = Id String deriving (Show,Eq)
 
-data SchemeVal = Const !Const 
-                | Pair !Pair
+data SchemeVal =  PNum !Number | PBool !Bool | PString !String | PNil
+                | Pair !(SchemeVal,SchemeVal)
                 | Sym !Id
                 | Closure !(Env,Lambda) 
                 | BuiltInFunc !Func
                 | None 
-type Pair = (SchemeVal ,SchemeVal)
 type Lambda = (Params, Body)
-type Func = [SchemeVal] -> ReturnVal
-type ReturnVal = Either String SchemeVal
+type Func = [SchemeVal] -> Either String SchemeVal
 
 instance Show SchemeVal where
-    show (Const c) = show c
+    show (PNum n) = show n
+    show (PBool b) = if b then "#t" else "#f"
+    show (PString s) = s
+    show PNil = "()" 
     show (Pair p) = "(" <> showSchemeList (pairToList p) <> ")"
     show (Sym (Id s)) = s
     show (Closure _) = "#<procedure>"
@@ -66,9 +67,19 @@ instance Show SchemeVal where
     show None = "(none)" 
 
 showSchemeList [] = ""
-showSchemeList (v:[Const Nil]) = show v
+showSchemeList (v:[PNil]) = show v
 showSchemeList [v,v2] = show v <> " . " <> show v2
 showSchemeList (car:cdr) = show car <> " " <> showSchemeList cdr
 
-type Variables = Mp.Map String SchemeVal
+type Ptr = Int
+type Variables = Mp.Map String Ptr
 data Env = Frame !Variables !Env | NilFrame deriving Show
+
+insertVar _ _ NilFrame = error "cannot insert var in nilframe"
+insertVar s p (Frame vars par) = Frame (Mp.insert s p vars) par
+
+
+getVar s NilFrame = Left $ "could not find value " <> s 
+getVar s (Frame vars par) = case (Mp.!?) vars s of
+        Just v -> Right v
+        Nothing -> getVar s par

@@ -8,20 +8,20 @@ import Data.List
 
 scPlus = BuiltInFunc $ \args -> do
                         a <- forM args (\e -> case e of
-                                Const (Num i) -> Right i
+                                PNum i -> Right i
                                 _ -> Left "[+] can only be applied between numbers")
-                        Right $ Const $ Num $ sum' a 
+                        Right $ PNum $ sum' a 
 scMinus = BuiltInFunc f where
                         f [] = Left "[-] must have 1 argument"
-                        f (Const (Num NaN) : xs) = Right $ Const $ Num NaN
-                        f (Const (Num (Integer i)) : xs) = do
+                        f (PNum NaN : xs) = Right $ PNum NaN
+                        f (PNum (Integer i) : xs) = do
                             a <- forM xs (\e -> case e of
-                                Const (Num i) -> Right i
+                                PNum i -> Right i
                                 _ -> Left "[-] can only be applied between numbers")
                             let ans = case sum' a of
                                         NaN -> NaN
                                         (Integer i2) -> Integer (i - i2)
-                            Right $ Const $ Num ans
+                            Right $ PNum ans
                         f _ = Left "'-' can only be applied between numbers"
 scCar = BuiltInFunc f where
                         f [Pair (h,t)] = Right h
@@ -33,46 +33,46 @@ scCdr = BuiltInFunc f where
                         f [x] = Left "[car] can only be applied to List"
                         f s = Left $ "[car] expected 1 argument, given " <> show (length s)
 scPNumber = BuiltInFunc f where
-                        f [Const (Num a)] = Right $ Const $ Bool True
-                        f _ = Right $ Const $ Bool False
+                        f [PNum a] = Right $ PBool True
+                        f _ = Right $ PBool False
 scMult = BuiltInFunc $ \args -> do
                         a <- forM args (\e -> case e of
-                                Const (Num i) -> Right i
+                                PNum i -> Right i
                                 _ -> Left "[+] can only be applied between numbers")
-                        Right $ Const $ Num $ product' a 
+                        Right $ PNum $ product' a 
 scDiv  = BuiltInFunc $ \args -> do
                         a <- forM args (\e -> case e of
-                                Const (Num i) -> Right i
+                                PNum i -> Right i
                                 _ -> Left "[+] can only be applied between numbers")
                         case a of
                             [] -> Left "[+] one or more argument is given"
-                            (x:xs) -> Right $ Const $ Num $ div' x xs
+                            (x:xs) -> Right $ PNum $ div' x xs
 scNumEq = comp (==)
 scLt = comp (<)
 scLeq = comp (<=)
 scGt = comp (>)
 scGeq = comp (>=)
 scNull = BuiltInFunc $ \args -> case args of
-                            [Const Nil] -> Right $ Const $ Bool True
-                            [_] -> Right $ Const $ Bool False
+                            [PNil] -> Right $ PBool True
+                            [_] -> Right $ PBool False
                             s -> Left $ "Number of argument is incorrect. Expected 1, given " <> show (length s) 
 scPPair = BuiltInFunc $ \args -> case args of
-                            [Pair _] -> Right $ Const $ Bool True
-                            [_] -> Right $ Const $ Bool False
+                            [Pair _] -> Right $ PBool True
+                            [_] -> Right $ PBool False
                             s -> Left $ "Number of argument is incorrect. Expected 1, given " <> show (length s) 
 scPList = BuiltInFunc $ \args -> case args of
-                            [p] -> Right $ Const $ Bool $ isList p
+                            [p] -> Right $ PBool $ isList p
                             s -> Left $ "Number of argument is incorrect. Expected 1, given " <> show (length s) 
 scSym = BuiltInFunc $ \args -> case args of
-                            [Sym _] -> Right $ Const $ Bool True
-                            [_] -> Right $ Const $ Bool False
+                            [Sym _] -> Right $ PBool True
+                            [_] -> Right $ PBool False
                             s -> Left $ "Number of argument is incorrect. Expected 1, given " <> show (length s) 
 scCons = BuiltInFunc $ \args -> case args of
                             [car, cdr] -> Right $ Pair (car,cdr)
                             s -> Left $ "Number of argument is incorrect. Expected 2, given " <> show (length s) 
 scList = BuiltInFunc $ \args -> Right (listToPair args Nothing)
 scLen = BuiltInFunc $ \args -> case args of
-                            [p] ->  Const . Num . Integer <$> length' p
+                            [p] ->   PNum . Integer <$> length' p
                             s -> Left $ "Number of argument is incorrect. Expected 1, given " <> show (length s) 
 scMemq = BuiltInFunc $ \args -> case args of
                             [elem,lst] -> undefined
@@ -93,20 +93,20 @@ scPProc = None
 scEq = None
 scNeq = None
 scEqual = None
-isList (Pair (_, Const Nil)) = True
+isList (Pair (_, PNil)) = True
 isList (Pair (_, cld)) = isList cld
 isList _ = False
 
-length' (Pair (_, Const Nil)) = Right 1
+length' (Pair (_, PNil)) = Right 1
 length' (Pair (_, p)) = (+) <$> Right 1 <*> length' p
 length' _ = Left "[length] can only be applied to list"
 
 memq elem (Pair (x, xs)) = undefined
 
 comp op = BuiltInFunc $ \args -> case args of
-                            [Const (Num NaN), _] -> Right $ Const $ Bool False
-                            [_, Const (Num NaN)] -> Right $ Const $ Bool False
-                            [Const (Num (Integer i)), Const (Num (Integer j))] -> Right $ Const $ Bool (op i j)
+                            [PNum NaN, _] -> Right $ PBool False
+                            [_, PNum NaN] -> Right $ PBool False
+                            [PNum (Integer i), PNum (Integer j)] -> Right $ PBool (op i j)
                             [_,_] -> Left "[<] can only be applied between numbers"
                             s -> Left $ "Number of argument is incorrect. Expected 2, given " <> show (length s)
                                                             
