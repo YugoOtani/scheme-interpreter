@@ -30,7 +30,7 @@ data Branch = Branch !Exp ![Exp] deriving Show
 data Body = Body ![Define] ![Exp] deriving Show
 data Params = Params ![Id] !(Maybe Id) deriving Show
 data SExp = SConst !Const | SId !Id | SList ![SExp] !(Maybe SExp) deriving Show
-data Const = Num !Number | Bool !Bool | String !String | Nil deriving Eq
+data Const = Num !Number | Bool !Bool | String !String | Nil 
 data Number = Integer !Integer | NaN 
 instance Eq Number where
     NaN == _ = False
