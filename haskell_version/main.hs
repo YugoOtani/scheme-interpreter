@@ -9,20 +9,37 @@ import SchemeFunc
 import qualified Data.Map as Mp
 import Control.Monad (forM, forM_)
 import Data.List
+import Control.Exception
+import System.IO
+import Control.DeepSeq
 
 main = do
     loop 1 initialCtx where
         loop i env = do
             putStr $ "Haskeme[" <> show i <> "] > "
-            input <- getLine
-            newEnv <- exec env input
-            loop (i+1) newEnv
+            input <- getLine;
+            if input == "quit" 
+                then do
+                    putStrLn "goodbye"
+                    return ()
+                else do
+                    newEnv <- exec env input
+                    loop (i+1) newEnv
+                    
+            `catch` \e -> do
+                putStrLn $ displayException (e::IOException) 
+                loop (i+1) env
+            
 
 exec :: Ctx -> String -> IO Ctx 
 exec ctx input = case parse input of
     Right (Load fname) -> do
-        s <- readFile fname
-        case parseMany s of
+        input <- withFile fname ReadMode $ \fd -> do
+                        content <- hGetContents fd
+                        return $!! content
+                                                        
+
+        case parseMany input of
             Left err -> do
                 putStrLn err
                 return ctx
@@ -42,12 +59,16 @@ exec ctx input = case parse input of
                             return ctx
                         Right (r,newCtx) -> do
                             -- putStrLn $ tostr 0 parseRes
-                            print r 
+                            putStrLn r 
                             -- putStrLn $ "env:\n" <> tostr 0 newEnv
                             return newCtx
     Left l -> do
-        putStrLn $ "parse error" <> l
+        putStrLn "parse error"
         return ctx
 
-
+zeroCtx = Ctx (Mp.empty,0) (Frame Mp.empty NilFrame)
+initialCtx :: Ctx
+initialCtx = case forM_ rootFn (\s -> alloc (globFn s) >>= \p -> def s p) `run` zeroCtx of
+            Left l -> error $ "[init ctx error]" <> l
+            Right (_,ctx) -> ctx
 

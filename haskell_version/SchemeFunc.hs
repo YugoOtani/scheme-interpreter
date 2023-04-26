@@ -4,43 +4,50 @@ module SchemeFunc where
 import Control.Monad
 import Token
 import Data.List
+import Data.Maybe
 
 
-scPlus = BuiltInFunc $ \args -> do
-                        a <- forM args (\e -> case e of
-                                PNum i -> Right i
-                                _ -> Left "[+] can only be applied between numbers")
-                        Right $ PNum $ sum' a 
-scMinus = BuiltInFunc f where
-                        f [] = Left "[-] must have 1 argument"
-                        f (PNum NaN : xs) = Right $ PNum NaN
-                        f (PNum (Integer i) : xs) = do
-                            a <- forM xs (\e -> case e of
-                                PNum i -> Right i
-                                _ -> Left "[-] can only be applied between numbers")
-                            let ans = case sum' a of
-                                        NaN -> NaN
-                                        (Integer i2) -> Integer (i - i2)
-                            Right $ PNum ans
-                        f _ = Left "'-' can only be applied between numbers"
-scCar = BuiltInFunc f where
-                        f [Pair (h,t)] = Right h
-                        f [x] = Left "[car] can only be applied to List"
-                        f s = Left $ "[car] expected 1 argument, given " <> show (length s)
+scPlus args = do
+        a <- forM args (\e -> case e of
+            PNum i -> Right i
+            _ -> Left "[+] can only be applied between numbers")
+        Right $ PNum $ sum' a
+scMinus = f where
+        f [] = Left "[-] must have 1 argument"
+        f (PNum NaN : xs) = Right $ PNum NaN
+        f (PNum (Integer i) : xs) = do
+            a <- forM xs (\e -> case e of
+                PNum i -> Right i
+                _ -> Left "[-] can only be applied between numbers")
+            let ans = case sum' a of
+                        NaN -> NaN
+                        (Integer i2) -> Integer (i - i2)
+            Right $ PNum ans
+        f _ = Left "'-' can only be applied between numbers"
+scCar = BuiltInFunc $ \args -> case args of
+                        [p] -> do
+                            v <- valof p
+                            case v of
+                                (Pair (car,cdr)) -> return car
+                                _ -> efail "[car] expected pair"
+                        v -> efail  "[car] number of argument is incorrect"
 
-scCdr = BuiltInFunc f where
-                        f [Pair (h,t)] = Right t
-                        f [x] = Left "[car] can only be applied to List"
-                        f s = Left $ "[car] expected 1 argument, given " <> show (length s)
-scPNumber = BuiltInFunc f where
+scCdr = BuiltInFunc $ \args -> case args of
+                        [p] -> do
+                            v <- valof p
+                            case v of
+                                (Pair (car,cdr)) -> return cdr
+                                _ -> efail "[car] expected pair"
+                        v -> efail  "[car] number of argument is incorrect"
+scPNumber = f where
                         f [PNum a] = Right $ PBool True
                         f _ = Right $ PBool False
-scMult = BuiltInFunc $ \args -> do
+scMult args = do
                         a <- forM args (\e -> case e of
                                 PNum i -> Right i
                                 _ -> Left "[+] can only be applied between numbers")
-                        Right $ PNum $ product' a 
-scDiv  = BuiltInFunc $ \args -> do
+                        Right $ PNum $ product' a
+scDiv args = do
                         a <- forM args (\e -> case e of
                                 PNum i -> Right i
                                 _ -> Left "[+] can only be applied between numbers")
@@ -52,31 +59,25 @@ scLt = comp (<)
 scLeq = comp (<=)
 scGt = comp (>)
 scGeq = comp (>=)
-scNull = BuiltInFunc $ \args -> case args of
+scNull args = case args of
                             [PNil] -> Right $ PBool True
                             [_] -> Right $ PBool False
-                            s -> Left $ "Number of argument is incorrect. Expected 1, given " <> show (length s) 
-scPPair = BuiltInFunc $ \args -> case args of
+                            s -> Left $ "Number of argument is incorrect. Expected 1, given " <> show (length s)
+scPPair args = case args of
                             [Pair _] -> Right $ PBool True
                             [_] -> Right $ PBool False
-                            s -> Left $ "Number of argument is incorrect. Expected 1, given " <> show (length s) 
-scPList = BuiltInFunc $ \args -> case args of
-                            [p] -> Right $ PBool $ isList p
-                            s -> Left $ "Number of argument is incorrect. Expected 1, given " <> show (length s) 
-scSym = BuiltInFunc $ \args -> case args of
+                            s -> Left $ "Number of argument is incorrect. Expected 1, given " <> show (length s)
+scPList = None
+scSym args = case args of
                             [Sym _] -> Right $ PBool True
                             [_] -> Right $ PBool False
-                            s -> Left $ "Number of argument is incorrect. Expected 1, given " <> show (length s) 
+                            s -> Left $ "Number of argument is incorrect. Expected 1, given " <> show (length s)
 scCons = BuiltInFunc $ \args -> case args of
-                            [car, cdr] -> Right $ Pair (car,cdr)
-                            s -> Left $ "Number of argument is incorrect. Expected 2, given " <> show (length s) 
-scList = BuiltInFunc $ \args -> Right (listToPair args Nothing)
-scLen = BuiltInFunc $ \args -> case args of
-                            [p] ->   PNum . Integer <$> length' p
-                            s -> Left $ "Number of argument is incorrect. Expected 1, given " <> show (length s) 
-scMemq = BuiltInFunc $ \args -> case args of
-                            [elem,lst] -> undefined
-                            s -> Left $ "Number of argument is incorrect. Expected 1, given " <> show (length s) 
+                            [car, cdr] -> alloc $ Pair (car,cdr)
+                            s -> efail $ "Number of argument is incorrect. Expected 2, given " <> show (length s)
+scList = None
+scLen = None
+scMemq = None
 scLast = None
 scAppend = None
 scSetCar = None
@@ -93,23 +94,19 @@ scPProc = None
 scEq = None
 scNeq = None
 scEqual = None
-isList (Pair (_, PNil)) = True
-isList (Pair (_, cld)) = isList cld
-isList _ = False
 
-length' (Pair (_, PNil)) = Right 1
-length' (Pair (_, p)) = (+) <$> Right 1 <*> length' p
-length' _ = Left "[length] can only be applied to list"
 
 memq elem (Pair (x, xs)) = undefined
 
-comp op = BuiltInFunc $ \args -> case args of
+eq' val1 val2 = undefined
+equal' val1 val2 = undefined
+comp op args = case args of
                             [PNum NaN, _] -> Right $ PBool False
                             [_, PNum NaN] -> Right $ PBool False
                             [PNum (Integer i), PNum (Integer j)] -> Right $ PBool (op i j)
                             [_,_] -> Left "[<] can only be applied between numbers"
                             s -> Left $ "Number of argument is incorrect. Expected 2, given " <> show (length s)
-                                                            
+
 sum' :: [Number] -> Number
 sum' = foldl' f (Integer 0) where
     f NaN _ = NaN
