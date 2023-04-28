@@ -1,10 +1,9 @@
+pub mod eval;
 pub mod parser;
 pub mod token;
-use parser::parse;
-use std::{
-    fmt::Display,
-    io::{stdin, stdout, Write},
-};
+use parser::parse_token;
+use std::io::{stdin, stdout, Write};
+
 fn main() {
     for i in 1.. {
         print!("mini-scheme[{i}] > ");
@@ -14,6 +13,6 @@ fn main() {
             .read_line(&mut buf)
             .map_err(|e| e.to_string())
             .unwrap();
-        println!("{:?}", parse(&buf[..]))
+        println!("{:?}", parse_token(&buf[..]))
     }
 }

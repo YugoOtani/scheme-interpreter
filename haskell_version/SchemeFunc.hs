@@ -67,7 +67,13 @@ scPPair args = case args of
                             [Pair _] -> Right $ PBool True
                             [_] -> Right $ PBool False
                             s -> Left $ "Number of argument is incorrect. Expected 1, given " <> show (length s)
-scPList = None
+scPList = BuiltInFunc $ \args -> case args of
+    [p] -> do
+        v <- valof p
+        b <- isScList v
+        alloc $ PBool b
+
+    s -> efail "number of argument is incorrect"
 scSym args = case args of
                             [Sym _] -> Right $ PBool True
                             [_] -> Right $ PBool False
@@ -75,9 +81,9 @@ scSym args = case args of
 scCons = BuiltInFunc $ \args -> case args of
                             [car, cdr] -> alloc $ Pair (car,cdr)
                             s -> efail $ "Number of argument is incorrect. Expected 2, given " <> show (length s)
-scList = None
+scList = BuiltInFunc $ \args -> listToPair args Nothing
 scLen = None
-scMemq = None
+scMemq = undefined
 scLast = None
 scAppend = None
 scSetCar = None
@@ -91,13 +97,60 @@ scStrToSym = None
 scStrToNum = None
 scNumToStr = None
 scPProc = None
-scEq = None
-scNeq = None
-scEqual = None
+scEq = BuiltInFunc $ \args -> case args of
+    [x,y] -> do
+        b <- scEqF x y
+        alloc $ PBool b
+    _ -> efail "number of argument is incorrect"
+scNeq = BuiltInFunc $ \args -> case args of
+    [x,y] -> do
+        b <- scEqF x y
+        alloc $ PBool $ not b
+    _ -> efail "number of argument is incorrect"
+scEqual :: SchemeVal
+scEqual = BuiltInFunc $ \args -> case args of
+    [x, y] -> do
+        b <- scEqualF x y 
+        alloc $ PBool b
+    _ -> efail "number of argument is incorrect"
+        
 
+scEqualF :: Ptr -> Ptr -> CResult Bool
+scEqualF x y = do
+    xv <- valof x
+    yv <- valof y
+    case (xv, yv) of
+            (PNil, PNil) -> return True
+            (None, None) -> return True
+            (PBool bx, PBool by) -> return $ bx==by
+            (PNum nx, PNum ny) -> return $ nx == ny
+            (PString sx, PString sy) -> return $ sx == sy
+            (Sym sx, Sym sy) -> return $ sx == sy
+            (Pair (xh,xt), Pair (yh, yt)) -> do
+                (&&) <$> scEqualF xt yt <*> scEqualF xh yh 
+                
+            _ -> return $ x == y
 
-memq elem (Pair (x, xs)) = undefined
+                    
+    
 
+scEqF x y = do
+        xv <- valof x
+        yv <- valof y
+        case (xv,yv) of
+            (PNil, PNil) -> return True 
+            (None , None) -> return True
+            _ -> return $ x==y
+
+isScList sv = do
+    case sv of
+        Pair (_, tail) -> do
+            vtail <- valof tail
+            case vtail of
+                PNil -> return True
+                Pair p -> isScList sv
+                _ -> return False
+        _ -> return False
 eq' val1 val2 = undefined
 equal' val1 val2 = undefined
 comp op args = case args of

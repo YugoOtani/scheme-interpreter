@@ -1,3 +1,4 @@
+use crate::eval::Env;
 #[derive(Debug)]
 pub enum Toplevel {
     Exp(Exp),
@@ -18,8 +19,8 @@ pub struct Params {
 pub enum Exp {
     Const(Const),
     Id(Id),
-    Lambda(Arg, Body),
-    Func {
+    Lambda(Params, Body),
+    FunCall {
         fname: Box<Exp>,
         args: Vec<Exp>,
     },
@@ -31,15 +32,19 @@ pub enum Exp {
         body: Body,
     },
     Let2(Vec<Bind>, Body),
+    LetRec(Vec<Bind>, Body),
     If {
         cond: Box<Exp>,
         then_exp: Box<Exp>,
-        else_exp: Option<Box<Exp>>,
+        else_exp: Box<Option<Exp>>,
     },
     Cond {
         branches: Vec<Branch>,
-        else_branch: Option<Box<Exp>>,
+        else_branch: Option<Vec<Exp>>,
     },
+    And(Vec<Exp>),
+    Or(Vec<Exp>),
+    Begin(Vec<Exp>),
 }
 #[derive(Debug)]
 pub struct Branch {
@@ -53,18 +58,14 @@ pub struct Bind {
 }
 #[derive(Debug)]
 pub struct Body {
-    defs: Vec<Define>,
-    exps: Vec<Exp>,
+    pub defs: Vec<Define>,
+    pub exps: Vec<Exp>,
 }
-#[derive(Debug)]
-pub struct Arg {
-    args: Vec<Id>,
-    other: Option<Id>,
-}
+
 #[derive(Debug)]
 pub struct Id(String);
 impl Id {
-    fn is_valid(c: char) -> bool {
+    pub fn is_valid(c: char) -> bool {
         match c {
             'a'..='z'
             | 'A'..='Z'
@@ -89,7 +90,8 @@ impl Id {
         }
     }
     pub fn new(s: &str) -> Option<Id> {
-        if s.chars().all(|c| Self::is_valid(c)) {
+        // 数値かどうか検査
+        if s.chars().all(|c| Self::is_valid(c)) || s.parse::<i64>().is_ok() {
             Some(Id(s.to_string()))
         } else {
             None
@@ -105,7 +107,7 @@ pub enum SExp {
     Id(Id),
     List {
         elems: Vec<SExp>,
-        tail: Option<Box<SExp>>,
+        tail: Box<Option<SExp>>,
     },
 }
 #[derive(Debug)]
@@ -116,3 +118,15 @@ pub enum Const {
     Nil,
 }
 type Num = i64;
+
+pub enum SchemeVal {
+    Num(Num),
+    Bool(bool),
+    String(String),
+    Nil,
+    Sym(Id),
+    Pair(Box<SchemeVal>, Box<SchemeVal>),
+    RootFn(Box<dyn Fn(Vec<SchemeVal>) -> SchemeVal>),
+    Closure(Env, Params, Body),
+    None,
+}

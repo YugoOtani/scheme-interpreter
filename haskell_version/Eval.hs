@@ -58,21 +58,21 @@ instance Eval Exp where
                         forM_ p_a (uncurry def)
                         forM_ defs eval
                         res <- forM fnbody eval
+                        v <- getEnv
                         setEnv env
+                        efail ("\n" <> tostr 0 v)
                         return $ last res
 
-                        -- (define (f y) (define x y) (define z x) (+ x y z)) これがエラーにならない
-
+                       
             e ->  efail "is not a procedure"
     eval (Set (Id s) exp) = do
-        newval <- eval exp >>= valof
+        newP <- eval exp
         maybep <- refof s
         case maybep of
             Just p -> do
-                newp <- alloc newval
-                overWrite s newp
+                overWrite s newP
                 alloc None
-            Nothing -> efail $ "could not find value [" <> s <>"]"
+            Nothing -> efail $ "[set] could not find value [" <> s <>"]"
     eval (Quote sexp) = eval sexp
     eval a = efail "[eval] not defined"
 
@@ -107,7 +107,7 @@ instance Eval Id where
         env <- getEnv
         maybep <- refof id
         case maybep of
-            Just v -> return v
+            Just p -> return p
             Nothing -> efail $ "could not find value [" <> id <> "]\n" <> "note : env is \n" <> tostr 0 env
 
 
@@ -118,8 +118,6 @@ instance Eval Const where
     eval Nil = alloc PNil
 
 
-a :: [SchemeVal] -> SchemeVal
-a = undefined
 
 ctxFn :: ([SchemeVal] -> Either String SchemeVal) -> [Ptr] -> CResult Ptr
 ctxFn f ptrs =  do

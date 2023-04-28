@@ -64,7 +64,6 @@ pexp = (ExpConst <$> pconst)
     <|> por
     <|> pbegin
     <|> inparen (FnCall <$> pexp <* endOfToken <*> list0 endOfToken pexp)
-    -- (Exp *Exp)は最後
 
 pset = inparen $ do
     P.str "set!"
@@ -139,7 +138,7 @@ pbegin = inparen $ do
 plambda = inparen $ do
     P.str "lambda"
     endOfToken
-    arg <- parg
+    arg <- pparams
     endOfToken
     body <- pbody
     return $ Lambda (arg,body)
@@ -148,7 +147,7 @@ pquote = inparen (do
     endOfToken
     Quote <$> psexp) <|> Quote <$> (P.char '\'' *> psexp)
 pbody = Body <$> list0 endOfToken pdef <*> (space0 *> list1 endOfToken pexp)
-parg = ((\a -> Params [a] Nothing) <$> pId)
+pparams = ((\a -> Params [a] Nothing) <$> pId)
     <|> inparen (do
             ids <- list0 space1 pId
             rest <- P.opt (space1 *> P.char '.' *> space1 *> pId)

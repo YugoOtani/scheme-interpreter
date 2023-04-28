@@ -58,9 +58,8 @@ exec ctx input = case parse input of
                             putStrLn l
                             return ctx
                         Right (r,newCtx) -> do
-                            -- putStrLn $ tostr 0 parseRes
+                            putStrLn $ tostr 0 parseRes
                             putStrLn r 
-                            -- putStrLn $ "env:\n" <> tostr 0 newEnv
                             return newCtx
     Left l -> do
         putStrLn "parse error"
