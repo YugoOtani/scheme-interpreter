@@ -5,7 +5,7 @@ use std::rc::Rc;
 type EResult = Result<Rc<SchemeVal>, String>;
 
 impl Toplevel {
-    pub fn eval(self, env: Rc<RefCell<Env>>) -> EResult {
+    pub fn eval(&self, env: Rc<RefCell<Env>>) -> EResult {
         match self {
             Toplevel::Define(def) => def.eval(env),
             Toplevel::Exp(exp) => exp.eval(env),
@@ -32,7 +32,7 @@ impl Define {
     }
 }
 impl Exp {
-    fn eval(self, env: Rc<RefCell<Env>>) -> EResult {
+    fn eval(&self, env: Rc<RefCell<Env>>) -> EResult {
         match self {
             Exp::Const(c) => c.eval(env),
             Exp::Id(id) => id.eval(env),
@@ -66,7 +66,7 @@ impl Exp {
                 }
             }
             Exp::Lambda(prms, body) => {
-                let closure = SchemeVal::Closure(env.clone(), prms, body);
+                let closure = SchemeVal::Closure(env.clone(), prms.clone(), body.clone());
                 Ok(Rc::new(closure))
             }
             _ => todo!(),
@@ -105,11 +105,11 @@ fn params_args(p: Params, arg: Vec<Rc<SchemeVal>>) -> Result<Vec<(String, Rc<Sch
 }
 
 impl Const {
-    fn eval(self, _: Rc<RefCell<Env>>) -> EResult {
+    fn eval(&self, _: Rc<RefCell<Env>>) -> EResult {
         Ok(match self {
-            Const::Bool(b) => Rc::new(SchemeVal::Bool(b)),
+            Const::Bool(b) => Rc::new(SchemeVal::Bool(*b)),
             Const::String(ref s) => Rc::new(SchemeVal::String(s.to_string())),
-            Const::Num(n) => Rc::new(SchemeVal::Num(n)),
+            Const::Num(n) => Rc::new(SchemeVal::Num(*n)),
             Const::Nil => Rc::new(SchemeVal::Nil),
         })
     }
@@ -124,7 +124,7 @@ impl Id {
     }
 }
 impl SExp {
-    fn eval(self, env: Rc<RefCell<Env>>) -> EResult {
+    fn eval(&self, env: Rc<RefCell<Env>>) -> EResult {
         todo!()
     }
 }

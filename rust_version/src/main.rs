@@ -22,18 +22,15 @@ fn main() {
             .unwrap();
         match parse_token(&buf[..]) {
             Err(e) => println!("{e}"),
-            Ok(s) => {
-                let s2 = s.clone();
-                match s.eval(env.clone()) {
-                    Ok(res) => {
-                        println!("{}", res.as_ref().to_string());
-                    }
-                    Err(msg) => {
-                        println!("{}", msg);
-                        s2.tdbg(0);
-                    }
+            Ok(s) => match s.eval(env.clone()) {
+                Ok(res) => {
+                    println!("{}", res.as_ref().to_string());
                 }
-            }
+                Err(msg) => {
+                    println!("{}", msg);
+                    s.tdbg(0);
+                }
+            },
         }
     }
 }
