@@ -8,20 +8,30 @@ fn sf(s: &str, f: impl Fn(Vec<Rc<S>>) -> Result<S, String> + 'static) -> (String
     (s.to_string(), Rc::new(S::RootFn(Box::new(f))))
 }
 fn add(args: Vec<Rc<S>>) -> Result<S, String> {
-    match &args[..] {
-        [x, y] => match (x.as_ref(), y.as_ref()) {
-            (S::Num(ref x), S::Num(ref y)) => Ok(S::Num(x + y)),
-            _ => Err(format!("invalid argument")),
-        },
-        _ => Err(format!("number of argument is incorrect")),
+    let mut ans = 0;
+    for e in args {
+        match e.as_ref() {
+            S::Num(n) => ans += n,
+            _ => return Err(format!("invalid argument")),
+        }
     }
+    Ok(S::Num(ans))
 }
 fn sub(args: Vec<Rc<S>>) -> Result<S, String> {
     match &args[..] {
-        [x, y] => match (x.as_ref(), y.as_ref()) {
-            (S::Num(ref x), S::Num(ref y)) => Ok(S::Num(x - y)),
-            _ => Err(format!("invalid argument")),
+        [] => Err(format!("[-] number of argument is incorrect")),
+        [h, t @ ..] => match h.as_ref() {
+            S::Num(i) => {
+                let mut ans = *i;
+                for e in t {
+                    match e.as_ref() {
+                        S::Num(j) => ans += *j,
+                        _ => return Err(format!("[-] invalid argument")),
+                    }
+                }
+                Ok(S::Num(ans))
+            }
+            _ => return Err(format!("[-] invalid argument")),
         },
-        _ => Err(format!("number of argument is incorrect")),
     }
 }
