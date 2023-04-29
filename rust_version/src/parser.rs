@@ -3,16 +3,17 @@ use nom::branch::*;
 use nom::bytes::complete::*;
 use nom::character::complete::*;
 use nom::combinator::*;
+use nom::error::ErrorKind;
 use nom::error::ParseError;
 //use nom::multi::*;
 use nom::sequence::*;
 use nom::*;
 #[test]
 fn exp_test() {
-    println!("{:?}", test_parser("(+ 1 2)"));
+    println!("{:?}", test_parser("(define (f x y) (+ x y))"));
 }
-fn test_parser(s: &str) -> IResult<&str, Body> {
-    parse_body(s)
+fn test_parser(s: &str) -> IResult<&str, Toplevel> {
+    parse_top(s)
 }
 pub fn parse_token(s: &str) -> IResult<&str, Toplevel> {
     parse_top(s)
@@ -21,15 +22,19 @@ fn fail<T>(s: &str) -> IResult<&str, T> {
     Err(Err::Error(error::Error::new(s, error::ErrorKind::Fail)))
 }
 fn in_bracket<'a, O, E: ParseError<&'a str>, F>(
-    inside: F,
+    mut inside: F,
 ) -> impl FnMut(&'a str) -> Result<(&'a str, O), nom::Err<E>>
 where
     F: FnMut(&'a str) -> Result<(&'a str, O), nom::Err<E>>,
 {
-    map(
-        permutation((char('('), multispace0, inside, multispace0, char(')'))),
-        |(_, _, tkn, _, _)| tkn,
-    )
+    move |s| {
+        let (s, _) = char('(')(s)?;
+        let (s, _) = multispace0(s)?;
+        let (s, res) = inside(s)?;
+        let (s, _) = multispace0(s)?;
+        let (s, _) = char(')')(s)?;
+        Ok((s, res))
+    }
 }
 pub fn separated_list0<I, O, O2, E, F, G>(
     mut sep: G,
@@ -55,17 +60,25 @@ where
 
         loop {
             let len = i.input_len();
+            if len == 0 {
+                break Ok((i, res));
+            }
             match sep.parse(i.clone()) {
                 Err(Err::Error(_)) => return Ok((i, res)),
                 Err(e) => return Err(e),
-                Ok((i1, _)) => match f.parse(i1.clone()) {
-                    Err(Err::Error(_)) => return Ok((i, res)),
-                    Err(e) => return Err(e),
-                    Ok((i2, o)) => {
-                        res.push(o);
-                        i = i2;
+                Ok((i1, _)) => {
+                    if i1.input_len() == len {
+                        return Ok((i1, res));
                     }
-                },
+                    match f.parse(i1.clone()) {
+                        Err(Err::Error(_)) => return Ok((i, res)),
+                        Err(e) => return Err(e),
+                        Ok((i2, o)) => {
+                            res.push(o);
+                            i = i2;
+                        }
+                    }
+                }
             }
         }
     }
@@ -94,17 +107,25 @@ where
 
         loop {
             let len = i.input_len();
+            if len == 0 {
+                break Ok((i, res));
+            }
             match sep.parse(i.clone()) {
                 Err(Err::Error(_)) => return Ok((i, res)),
                 Err(e) => return Err(e),
-                Ok((i1, _)) => match f.parse(i1.clone()) {
-                    Err(Err::Error(_)) => return Ok((i, res)),
-                    Err(e) => return Err(e),
-                    Ok((i2, o)) => {
-                        res.push(o);
-                        i = i2;
+                Ok((i1, _)) => {
+                    if i1.input_len() == len {
+                        return Ok((i1, res));
                     }
-                },
+                    match f.parse(i1.clone()) {
+                        Err(Err::Error(_)) => return Ok((i, res)),
+                        Err(e) => return Err(e),
+                        Ok((i2, o)) => {
+                            res.push(o);
+                            i = i2;
+                        }
+                    }
+                }
             }
         }
     }
@@ -116,7 +137,7 @@ fn end_token<'a>(s: &'a str) -> IResult<&'a str, ()> {
         Some(')') => Ok((s, ())),
         Some(c) => {
             if c.is_whitespace() {
-                let s = del_space(s);
+                let (s, _) = multispace0(s)?;
                 Ok((s, ()))
             } else {
                 fail("end of token expected")
@@ -125,56 +146,53 @@ fn end_token<'a>(s: &'a str) -> IResult<&'a str, ()> {
     }
 }
 fn parse_top(s: &str) -> IResult<&str, Toplevel> {
-    alt((
-        map(parse_def, Toplevel::Define),
-        map(
-            in_bracket(permutation((tag("load"), multispace1, parse_string))),
-            |(_, _, fname)| Toplevel::Load(fname),
-        ),
-        map(parse_exp, Toplevel::Exp),
-    ))(s)
+    if let Ok((s, res)) = map(parse_def, Toplevel::Define)(s) {
+        return Ok((s, res));
+    }
+    if let Ok((s, res)) = map(
+        in_bracket(permutation((tag("load"), multispace1, parse_string))),
+        |(_, _, fname)| Toplevel::Load(fname),
+    )(s)
+    {
+        return Ok((s, res));
+    }
+    map(parse_exp, Toplevel::Exp)(s)
 }
 fn parse_string(s: &str) -> IResult<&str, String> {
     let (s, res) = delimited(char('"'), is_not("\""), char('"'))(s)?;
     Ok((s, res.to_string()))
 }
 fn parse_def(s: &str) -> IResult<&str, Define> {
-    alt((parse_def_var, parse_def_fn))(s)
+    if let Ok((s, res)) = in_bracket(parse_def_var)(s) {
+        return Ok((s, res));
+    }
+    in_bracket(parse_def_fn)(s)
 }
 fn parse_def_var(s: &str) -> IResult<&str, Define> {
-    map(
-        in_bracket(permutation((
-            tag("define"),
-            multispace1,
-            parse_id,
-            end_token,
-            parse_exp,
-        ))),
-        |(_, _, id, _, exp)| Define::Var(id, exp),
-    )(s)
+    let (s, _) = tag("define")(s)?;
+    let (s, _) = multispace1(s)?;
+    let (s, id) = parse_id(s)?;
+    let (s, _) = end_token(s)?;
+    let (s, exp) = parse_exp(s)?;
+    Ok((s, Define::Var(id, exp)))
 }
 fn parse_def_fn(s: &str) -> IResult<&str, Define> {
-    let (s, res) = in_bracket(permutation((
-        tag("define"),
-        end_token,
-        parse_id,
-        multispace0,
-        parse_argfn,
-        multispace0,
-        char(')'),
-        multispace0,
-        parse_body,
-    )))(s)?;
-    let (_, _, id, _, param, _, _, _, body) = res;
+    let (s, _) = tag("define")(s)?;
+    let (s, _) = end_token(s)?;
+    let (s, _) = char('(')(s)?;
+    let (s, _) = multispace0(s)?;
+    let (s, id) = parse_id(s)?;
+    let (s, _) = multispace0(s)?;
+    let (s, param) = parse_argfn(s)?;
+    let (s, _) = multispace0(s)?;
+    let (s, _) = char(')')(s)?;
+    let (s, _) = multispace0(s)?;
+    let (s, body) = parse_body(s)?;
     Ok((s, Define::Func(id, param, body)))
 }
 fn parse_argfn(s: &str) -> IResult<&str, Params> {
     let (s, prms) = separated_list0(multispace1, parse_id)(s)?;
-    let tmp = map(
-        permutation((space1, char(')'), space1, parse_id)),
-        |(_, _, _, id)| id,
-    );
-    let (s, other) = opt(tmp)(s)?;
+    let (s, other) = opt(parse_prm_rest)(s)?;
     if prms.is_empty() && other.is_some() {
         fail("illeagal use of '.'")
     } else {
@@ -182,20 +200,18 @@ fn parse_argfn(s: &str) -> IResult<&str, Params> {
     }
 }
 fn parse_params(s: &str) -> IResult<&str, Params> {
-    alt((
-        map(parse_id, |id| Params {
-            prms: vec![id],
-            other: None,
-        }),
-        in_bracket(parse_multiparams),
-    ))(s)
+    if let Ok((s, res)) = map(parse_id, |id| Params {
+        prms: vec![id],
+        other: None,
+    })(s)
+    {
+        return Ok((s, res));
+    }
+    in_bracket(parse_multiparams)(s)
 }
 fn parse_multiparams(s: &str) -> IResult<&str, Params> {
     let (s, ids) = separated_list0(multispace1, parse_id)(s)?;
-    let (s, id) = opt(map(
-        permutation((multispace1, char('.'), multispace1, parse_id)),
-        |(_, _, _, id)| id,
-    ))(s)?;
+    let (s, id) = opt(parse_prm_rest)(s)?;
     if ids.is_empty() && id.is_some() {
         fail("illeagal use of '.'")
     } else {
@@ -208,19 +224,28 @@ fn parse_multiparams(s: &str) -> IResult<&str, Params> {
         ))
     }
 }
+fn parse_prm_rest(s: &str) -> IResult<&str, Id> {
+    let (s, _) = multispace1(s)?;
+    let (s, _) = char('.')(s)?;
+    let (s, _) = multispace1(s)?;
+    let (s, id) = parse_id(s)?;
+    Ok((s, id))
+}
 fn parse_branch(s: &str) -> IResult<&str, Branch> {
-    in_bracket(map(
-        permutation((parse_exp, end_token, separated_list1(end_token, parse_exp))),
-        |(exp, _, exps)| Branch {
-            cond: exp,
-            then: exps,
-        },
-    ))(s)
+    let (s, cond) = parse_exp(s)?;
+    let (s, _) = end_token(s)?;
+    let (s, then) = separated_list1(end_token, parse_exp)(s)?;
+    Ok((s, Branch { cond, then }))
 }
 fn parse_bind(s: &str) -> IResult<&str, Bind> {
-    let (s2, res) = in_bracket(permutation((parse_id, end_token, parse_exp)))(s)?;
-    let (id, _, exp) = res;
-    Ok((s2, Bind { name: id, val: exp }))
+    let (s2, (name, val)) = in_bracket(one_bind)(s)?;
+    Ok((s2, Bind { name, val }))
+}
+fn one_bind(s: &str) -> IResult<&str, (Id, Exp)> {
+    let (s, id) = parse_id(s)?;
+    let (s, _) = end_token(s)?;
+    let (s, exp) = parse_exp(s)?;
+    Ok((s, (id, exp)))
 }
 fn parse_body(s: &str) -> IResult<&str, Body> {
     let (s, defs) = separated_list0(end_token, parse_def)(s)?;
@@ -230,22 +255,46 @@ fn parse_body(s: &str) -> IResult<&str, Body> {
 }
 
 fn parse_exp(s: &str) -> IResult<&str, Exp> {
-    alt((
-        map(parse_const, Exp::Const),
-        map(parse_id, Exp::Id),
-        parse_quote,
-        parse_set,
-        parse_ifexp,
-        parse_cond,
-        parse_and,
-        parse_or,
-        parse_let,
-        parse_lambda,
-        parse_let2,
-        parse_letrec,
-        parse_begin,
-        in_bracket(parse_fncall),
-    ))(s)
+    if let Ok((s, res)) = map(parse_const, Exp::Const)(s) {
+        return Ok((s, res));
+    }
+    if let Ok((s, res)) = map(parse_id, Exp::Id)(s) {
+        return Ok((s, res));
+    }
+    if let Ok((s, res)) = parse_quote(s) {
+        return Ok((s, res));
+    }
+    if let Ok((s, res)) = in_bracket(parse_set)(s) {
+        return Ok((s, res));
+    }
+    if let Ok((s, res)) = in_bracket(parse_cond)(s) {
+        return Ok((s, res));
+    }
+    if let Ok((s, res)) = in_bracket(parse_and)(s) {
+        return Ok((s, res));
+    }
+    if let Ok((s, res)) = in_bracket(parse_or)(s) {
+        return Ok((s, res));
+    }
+    if let Ok((s, res)) = in_bracket(parse_ifexp)(s) {
+        return Ok((s, res));
+    }
+    if let Ok((s, res)) = parse_lambda(s) {
+        return Ok((s, res));
+    }
+    if let Ok((s, res)) = in_bracket(parse_let)(s) {
+        return Ok((s, res));
+    }
+    if let Ok((s, res)) = in_bracket(parse_let2)(s) {
+        return Ok((s, res));
+    }
+    if let Ok((s, res)) = in_bracket(parse_letrec)(s) {
+        return Ok((s, res));
+    }
+    if let Ok((s, res)) = in_bracket(parse_begin)(s) {
+        return Ok((s, res));
+    }
+    in_bracket(parse_fncall)(s)
 }
 fn parse_lambda(s: &str) -> IResult<&str, Exp> {
     let (s, _) = tag("lambda")(s)?;
@@ -257,11 +306,16 @@ fn parse_lambda(s: &str) -> IResult<&str, Exp> {
     Ok((s, Exp::Lambda(prms, body)))
 }
 fn parse_quote(s: &str) -> IResult<&str, Exp> {
-    alt((parse_quote1, parse_quote2))(s)
+    if let Ok((s, res)) = in_bracket(parse_quote1)(s) {
+        return Ok((s, res));
+    }
+    parse_quote2(s)
 }
 fn parse_quote1(s: &str) -> IResult<&str, Exp> {
-    let (s, (_, _, sexp)) = in_bracket(permutation((tag("quote"), end_token, parse_sexp)))(s)?;
-    Ok((s, Exp::Quote(sexp)))
+    let (s, _) = tag("quote")(s)?;
+    let (s, _) = end_token(s)?;
+    let (s, es) = parse_sexp(s)?;
+    Ok((s, Exp::Quote(es)))
 }
 fn parse_quote2(s: &str) -> IResult<&str, Exp> {
     let (s, _) = char('\'')(s)?;
@@ -269,27 +323,21 @@ fn parse_quote2(s: &str) -> IResult<&str, Exp> {
     Ok((s, Exp::Quote(sexp)))
 }
 fn parse_set(s: &str) -> IResult<&str, Exp> {
-    let (s2, res) = in_bracket(permutation((
-        tag("set!"),
-        multispace1,
-        parse_id,
-        end_token,
-        parse_exp,
-    )))(s)?;
-    let (_, _, id, _, exp) = res;
-    Ok((s2, Exp::Set(id, Box::new(exp))))
+    let (s, _) = tag("set!")(s)?;
+    let (s, _) = multispace1(s)?;
+    let (s, id) = parse_id(s)?;
+    let (s, _) = end_token(s)?;
+    let (s, exp) = parse_exp(s)?;
+    Ok((s, Exp::Set(id, Box::new(exp))))
 }
 
 fn parse_let(s: &str) -> IResult<&str, Exp> {
-    let (s, res) = in_bracket(permutation((
-        tag("let"),
-        end_token,
-        opt(map(permutation((parse_id, end_token)), |(id, _)| id)),
-        in_bracket(separated_list0(end_token, parse_bind)),
-        end_token,
-        parse_body,
-    )))(s)?;
-    let (_, _, id, bind, _, body) = res;
+    let (s, _) = tag("let")(s)?;
+    let (s, _) = end_token(s)?;
+    let (s, id) = opt(map(permutation((parse_id, end_token)), |(id, _)| id))(s)?;
+    let (s, bind) = in_bracket(separated_list0(end_token, parse_bind))(s)?;
+    let (s, _) = end_token(s)?;
+    let (s, body) = parse_body(s)?;
     Ok((
         s,
         Exp::Let {
@@ -300,64 +348,45 @@ fn parse_let(s: &str) -> IResult<&str, Exp> {
     ))
 }
 fn parse_let2(s: &str) -> IResult<&str, Exp> {
-    let (s, res) = in_bracket(permutation((
-        tag("let*"),
-        end_token,
-        in_bracket(separated_list0(end_token, parse_bind)),
-        end_token,
-        parse_body,
-    )))(s)?;
-    let (_, _, bind, _, body) = res;
+    let (s, _) = tag("let*")(s)?;
+    let (s, _) = end_token(s)?;
+    let (s, bind) = in_bracket(separated_list0(end_token, parse_bind))(s)?;
+    let (s, _) = end_token(s)?;
+    let (s, body) = parse_body(s)?;
     Ok((s, Exp::Let2(bind, body)))
 }
 fn parse_letrec(s: &str) -> IResult<&str, Exp> {
-    let (s, res) = in_bracket(permutation((
-        tag("letrec"),
-        end_token,
-        in_bracket(separated_list0(end_token, parse_bind)),
-        end_token,
-        parse_body,
-    )))(s)?;
-    let (_, _, bind, _, body) = res;
+    let (s, _) = tag("letrec")(s)?;
+    let (s, _) = end_token(s)?;
+    let (s, bind) = in_bracket(separated_list0(end_token, parse_bind))(s)?;
+    let (s, _) = end_token(s)?;
+    let (s, body) = parse_body(s)?;
     Ok((s, Exp::LetRec(bind, body)))
 }
 fn parse_ifexp(s: &str) -> IResult<&str, Exp> {
-    let (s, res) = in_bracket(permutation((
-        tag("if"),
-        end_token,
-        parse_exp,
-        end_token,
-        parse_exp,
-        end_token,
-        opt(parse_exp),
-        end_token,
-    )))(s)?;
-    let (_, _, cond, _, then_exp, _, else_exp, _) = res;
+    let (s, _) = tag("if")(s)?;
+    let (s, _) = end_token(s)?;
+    let (s, c) = parse_exp(s)?;
+    let (s, _) = end_token(s)?;
+    let (s, e1) = parse_exp(s)?;
+    let (s, _) = end_token(s)?;
+    let (s, e2) = opt(parse_exp)(s)?;
+    let (s, _) = end_token(s)?;
     Ok((
         s,
         Exp::If {
-            cond: Box::new(cond),
-            then_exp: Box::new(then_exp),
-            else_exp: Box::new(else_exp),
+            cond: Box::new(c),
+            then_exp: Box::new(e1),
+            else_exp: Box::new(e2),
         },
     ))
 }
 fn parse_cond(s: &str) -> IResult<&str, Exp> {
-    let (s, res) = in_bracket(permutation((
-        tag("cond"),
-        multispace0,
-        separated_list0(end_token, parse_branch),
-        multispace0,
-        opt(map(
-            permutation((
-                tag("else"),
-                end_token,
-                separated_list1(end_token, parse_exp),
-            )),
-            |(_, _, exp)| exp,
-        )),
-    )))(s)?;
-    let (_, _, branches, _, else_branch) = res;
+    let (s, _) = tag("cond")(s)?;
+    let (s, _) = multispace0(s)?;
+    let (s, branches) = separated_list0(end_token, in_bracket(parse_branch))(s)?;
+    let (s, _) = multispace0(s)?;
+    let (s, else_branch) = opt(parse_else)(s)?;
     Ok((
         s,
         Exp::Cond {
@@ -366,27 +395,29 @@ fn parse_cond(s: &str) -> IResult<&str, Exp> {
         },
     ))
 }
+fn parse_else(s: &str) -> IResult<&str, Vec<Exp>> {
+    let (s, _) = tag("else")(s)?;
+    let (s, _) = end_token(s)?;
+    let (s, es) = separated_list1(end_token, parse_exp)(s)?;
+    Ok((s, es))
+}
 fn parse_and(s: &str) -> IResult<&str, Exp> {
-    in_bracket(map(
-        permutation((tag("and"), end_token, separated_list0(end_token, parse_exp))),
-        |(_, _, exps)| Exp::And(exps),
-    ))(s)
+    let (s, _) = tag("and")(s)?;
+    let (s, _) = end_token(s)?;
+    let (s, es) = separated_list0(end_token, parse_exp)(s)?;
+    Ok((s, Exp::And(es)))
 }
 fn parse_or(s: &str) -> IResult<&str, Exp> {
-    in_bracket(map(
-        permutation((tag("or"), end_token, separated_list0(end_token, parse_exp))),
-        |(_, _, exps)| Exp::And(exps),
-    ))(s)
+    let (s, _) = tag("or")(s)?;
+    let (s, _) = end_token(s)?;
+    let (s, es) = separated_list0(end_token, parse_exp)(s)?;
+    Ok((s, Exp::Or(es)))
 }
 fn parse_begin(s: &str) -> IResult<&str, Exp> {
-    in_bracket(map(
-        permutation((
-            tag("begin"),
-            end_token,
-            separated_list0(end_token, parse_exp),
-        )),
-        |(_, _, exps)| Exp::And(exps),
-    ))(s)
+    let (s, _) = tag("begin")(s)?;
+    let (s, _) = end_token(s)?;
+    let (s, es) = separated_list0(end_token, parse_exp)(s)?;
+    Ok((s, Exp::Begin(es)))
 }
 fn parse_fncall(s: &str) -> IResult<&str, Exp> {
     let (s, fname) = parse_exp(s)?;
@@ -408,18 +439,24 @@ fn parse_id(s: &str) -> IResult<&str, Id> {
     }
 }
 fn parse_sexp(s: &str) -> IResult<&str, SExp> {
-    alt((
-        map(parse_const, SExp::Const),
-        map(parse_id, SExp::Id),
-        in_bracket(parse_sexplist),
-    ))(s)
+    if let Ok((s, res)) = map(parse_const, SExp::Const)(s) {
+        return Ok((s, res));
+    }
+    if let Ok((s, res)) = map(parse_id, SExp::Id)(s) {
+        return Ok((s, res));
+    }
+    in_bracket(parse_sexplist)(s)
 }
 fn parse_sexplist(s: &str) -> IResult<&str, SExp> {
     let (s, exps) = separated_list0(end_token, parse_sexp)(s)?;
-    let (s, rest) = opt(map(
-        permutation((multispace1, char('.'), end_token, parse_sexp)),
-        |(_, _, _, e)| e,
-    ))(s)?;
+    fn helper(s: &str) -> IResult<&str, SExp> {
+        let (s, _) = multispace1(s)?;
+        let (s, _) = char('.')(s)?;
+        let (s, _) = end_token(s)?;
+        let (s, exp) = parse_sexp(s)?;
+        Ok((s, exp))
+    }
+    let (s, rest) = opt(helper)(s)?;
     if exps.is_empty() && rest.is_some() {
         fail("")
     } else {
@@ -433,35 +470,33 @@ fn parse_sexplist(s: &str) -> IResult<&str, SExp> {
     }
 }
 fn parse_const(s: &str) -> IResult<&str, Const> {
-    alt((
-        parse_num,
-        parse_bool,
-        map(parse_string, Const::String),
-        parse_nil,
-    ))(s)
+    if let Ok((s, res)) = parse_num(s) {
+        return Ok((s, res));
+    }
+    if let Ok((s, res)) = parse_bool(s) {
+        return Ok((s, res));
+    }
+    if let Ok((s, res)) = map(parse_string, Const::String)(s) {
+        return Ok((s, res));
+    }
+    parse_nil(s)
 }
 fn parse_num(s: &str) -> IResult<&str, Const> {
     map(i64, Const::Num)(s)
 }
 fn parse_bool(s: &str) -> IResult<&str, Const> {
-    alt((
-        map(tag("#t"), |_| Const::Bool(true)),
-        map(tag("#f"), |_| Const::Bool(false)),
-    ))(s)
+    if let Ok((s, _)) = tag::<&str, &str, ()>("#t")(s) {
+        return Ok((s, Const::Bool(true)));
+    }
+    map(tag("#f"), |_| Const::Bool(false))(s)
 }
 fn parse_nil(s: &str) -> IResult<&str, Const> {
-    map(permutation((char('('), multispace0, char(')'))), |_| {
-        Const::Nil
-    })(s)
+    let (s, _) = char('(')(s)?;
+    let (s, _) = multispace0(s)?;
+    let (s, _) = char(')')(s)?;
+    Ok((s, Const::Nil))
 }
 
-fn del_space(s: &str) -> &str {
-    match s.find(|c: char| !c.is_whitespace()) {
-        Some(0) => s,
-        Some(i) => &s[i..],
-        None => "",
-    }
-}
 fn next(s: &str) -> Option<char> {
     s.chars().nth(0)
 }
