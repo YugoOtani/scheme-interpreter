@@ -65,6 +65,7 @@ pexp = (ExpConst <$> pconst)
     <|> pbegin
     <|> inparen (FnCall <$> pexp <* endOfToken <*> list0 endOfToken pexp)
 
+pset :: P.Parser Exp
 pset = inparen $ do
     P.str "set!"
     space1
@@ -163,6 +164,7 @@ psexp = (SConst <$> pconst) <|> (SId <$> pId)
                     ([],Just _) -> P.fail "illeagal use of '.'"
                     _ -> return $ SList exps rest
             )
+pconst :: P.Parser Token.Const
 pconst = (Num  <$> pnum) <|> (Bool <$> pbool) <|> (String <$> pstr) <|> (Nil <$ pnil) 
 pnil = P.char '(' *> space0 *> P.char ')' >> return ()
 pbool = (True <$ P.str "#t") <|> (False <$ P.str "#f")

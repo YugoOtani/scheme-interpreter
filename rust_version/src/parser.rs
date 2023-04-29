@@ -3,20 +3,29 @@ use nom::branch::*;
 use nom::bytes::complete::*;
 use nom::character::complete::*;
 use nom::combinator::*;
-use nom::error::ErrorKind;
 use nom::error::ParseError;
-//use nom::multi::*;
 use nom::sequence::*;
 use nom::*;
+
+// TODO : パーサーを
+//  &str -> Result<Err, (&str, ParseRes)> ではなく
+// &mut str -> Result<Err, ParseRes> として実装してみる
 #[test]
 fn exp_test() {
-    println!("{:?}", test_parser("(define (f x y) (+ x y))"));
+    println!("{:?}", parse_top("(define (f x y) (+ x y))"));
 }
-fn test_parser(s: &str) -> IResult<&str, Toplevel> {
-    parse_top(s)
-}
-pub fn parse_token(s: &str) -> IResult<&str, Toplevel> {
-    parse_top(s)
+pub fn parse_token(s: &str) -> Result<Toplevel, String> {
+    fn helper(s: &str) -> IResult<&str, Toplevel> {
+        let (s, _) = multispace0(s)?;
+        let (s, res) = parse_top(s)?;
+        let (s, _) = multispace0(s)?;
+        Ok((s, res))
+    }
+    match helper(s) {
+        Err(e) => Err(format!("{:?}", e)),
+        Ok(("", res)) => Ok(res),
+        Ok((s, _)) => Err(format!("{s} remains untaken")),
+    }
 }
 fn fail<T>(s: &str) -> IResult<&str, T> {
     Err(Err::Error(error::Error::new(s, error::ErrorKind::Fail)))

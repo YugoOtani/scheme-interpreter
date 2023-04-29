@@ -1,21 +1,23 @@
-use crate::eval::Env;
-#[derive(Debug)]
+use crate::env::Env;
+use std::cell::*;
+use std::rc::Rc;
+#[derive(Debug, Clone)]
 pub enum Toplevel {
     Exp(Exp),
     Define(Define),
     Load(String),
 }
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Define {
     Var(Id, Exp),
     Func(Id, Params, Body),
 }
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Params {
     pub prms: Vec<Id>,
     pub other: Option<Id>,
 }
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Exp {
     Const(Const),
     Id(Id),
@@ -46,23 +48,23 @@ pub enum Exp {
     Or(Vec<Exp>),
     Begin(Vec<Exp>),
 }
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Branch {
     pub cond: Exp,
     pub then: Vec<Exp>,
 }
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Bind {
     pub name: Id,
     pub val: Exp,
 }
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Body {
     pub defs: Vec<Define>,
     pub exps: Vec<Exp>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Id(String);
 impl Id {
     pub fn is_valid(c: char) -> bool {
@@ -101,7 +103,7 @@ impl Id {
         &self.0
     }
 }
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum SExp {
     Const(Const),
     Id(Id),
@@ -110,7 +112,7 @@ pub enum SExp {
         tail: Box<Option<SExp>>,
     },
 }
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Const {
     Num(Num),
     Bool(bool),
@@ -125,8 +127,35 @@ pub enum SchemeVal {
     String(String),
     Nil,
     Sym(Id),
-    Pair(Box<SchemeVal>, Box<SchemeVal>),
-    RootFn(Box<dyn Fn(Vec<SchemeVal>) -> SchemeVal>),
-    Closure(Env, Params, Body),
+    Pair(Rc<SchemeVal>, Rc<SchemeVal>),
+    RootFn(Box<dyn Fn(Vec<Rc<SchemeVal>>) -> Result<SchemeVal, String>>),
+    Closure(Rc<RefCell<Env>>, Params, Body),
     None,
+}
+impl SchemeVal {
+    pub fn from_list(v: &[Rc<SchemeVal>]) -> SchemeVal {
+        if v.len() == 0 {
+            SchemeVal::Nil
+        } else {
+            SchemeVal::Pair(v[0].clone(), Rc::new(Self::from_list(&v[1..])))
+        }
+    }
+    pub fn to_string(&self) -> String {
+        match self {
+            SchemeVal::Num(n) => n.to_string(),
+            SchemeVal::Bool(b) => {
+                if *b {
+                    "#t".to_string()
+                } else {
+                    "#f".to_string()
+                }
+            }
+            SchemeVal::String(s) => s.to_string(),
+            SchemeVal::Nil => "()".to_string(),
+            SchemeVal::Sym(id) => id.get().to_string(),
+            SchemeVal::Pair(v1, v2) => format!("({} {})", v1.to_string(), v2.to_string()),
+            SchemeVal::RootFn(_) | SchemeVal::Closure(_, _, _) => "#<procedure>".to_string(),
+            SchemeVal::None => "(none)".to_string(),
+        }
+    }
 }

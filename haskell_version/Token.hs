@@ -1,3 +1,4 @@
+{-# LANGUAGE InstanceSigs #-}
 module Token where
 import qualified Data.Text as T
 import qualified Data.Map as Mp
@@ -34,6 +35,7 @@ data SExp = SConst !Const | SId !Id | SList ![SExp] !(Maybe SExp)
 data Const = Num !Number | Bool !Bool | String !String | Nil 
 data Number = Integer !Integer | NaN 
 instance Eq Number where
+    (==) :: Number -> Number -> Bool
     NaN == _ = False
     _ == NaN = False
     Integer i == Integer j = i == j
