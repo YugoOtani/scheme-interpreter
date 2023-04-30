@@ -386,7 +386,7 @@ fn parse_ifexp(s: &str) -> IResult<&str, Exp> {
         Exp::If {
             cond: Box::new(c),
             then_exp: Box::new(e1),
-            else_exp: Box::new(e2),
+            else_exp: e2.map(Box::new),
         },
     ))
 }
@@ -473,7 +473,7 @@ fn parse_sexplist(s: &str) -> IResult<&str, SExp> {
             s,
             SExp::List {
                 elems: exps,
-                tail: Box::new(rest),
+                tail: rest.map(Box::new),
             },
         ))
     }

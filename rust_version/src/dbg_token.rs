@@ -28,6 +28,7 @@ impl<T: TDbg> TDbg for Vec<T> {
         }
     }
 }
+
 impl<T: TDbg> TDbg for Option<T> {
     fn tdbg(&self, n: usize) {
         match self {
@@ -132,7 +133,13 @@ impl TDbg for Exp {
                 Self::pln(n, "Exp(If)");
                 cond.tdbg(n + 1);
                 then_exp.tdbg(n + 1);
-                else_exp.tdbg(n + 1);
+                match else_exp {
+                    None => Self::pln(n + 1, "None"),
+                    Some(v) => {
+                        Self::p(n + 1, "Some");
+                        v.tdbg(0)
+                    }
+                }
             }
         }
     }
@@ -222,7 +229,13 @@ impl TDbg for SExp {
             }
             SExp::List { elems, tail } => {
                 elems.tdbg(n + 1);
-                tail.tdbg(n + 1);
+                match tail {
+                    None => Self::pln(n + 1, "None"),
+                    Some(v) => {
+                        Self::p(n + 1, "Some");
+                        v.tdbg(0)
+                    }
+                }
             }
         }
     }

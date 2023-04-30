@@ -17,7 +17,7 @@ impl Define {
     fn eval(&self, env: Rc<RefCell<Env>>) -> EResult {
         match self {
             Define::Var(id, exp) => {
-                let v = exp.clone().eval(env.clone())?;
+                let v = exp.eval(env.clone())?;
                 let id = id.get();
                 env.clone().borrow_mut().insert(id, &v);
                 Ok(Rc::new(SchemeVal::None))
@@ -58,9 +58,9 @@ impl Exp {
                         }
                         let n = exps.len();
                         for exp in &exps {
-                            exp.clone().eval(eval_env.clone())?;
+                            exp.eval(eval_env.clone())?;
                         }
-                        exps[n - 1].clone().eval(eval_env)
+                        exps[n - 1].eval(eval_env)
                     }
                     _ => panic!(),
                 }
@@ -71,13 +71,14 @@ impl Exp {
             }
             Exp::Set(id, exp) => {
                 let id = id.get();
-                let v = exp.clone().eval(env.clone())?;
+                let v = exp.eval(env.clone())?;
                 env.clone()
                     .borrow_mut()
                     .replace(id, &v)
                     .ok_or(format!("could not find value {id}"))?;
                 Ok(Rc::new(SchemeVal::None))
             }
+            Exp::Quote(sexp) => sexp.eval(env.clone()),
             _ => todo!(),
         }
     }
@@ -94,10 +95,7 @@ fn params_args(p: Params, arg: Vec<Rc<SchemeVal>>) -> Result<Vec<(String, Rc<Sch
             for i in 0..n {
                 ret.push((prms[i].get().to_string(), arg[i].clone()));
             }
-            ret.push((
-                id.get().to_string(),
-                Rc::new(SchemeVal::from_list(&arg[n..])),
-            ));
+            ret.push((id.get().to_string(), SchemeVal::from_list(&arg[n..], None)));
             return Ok(ret);
         }
         None => {
@@ -134,6 +132,20 @@ impl Id {
 }
 impl SExp {
     fn eval(&self, env: Rc<RefCell<Env>>) -> EResult {
-        todo!()
+        match self {
+            SExp::Const(c) => c.eval(env),
+            SExp::Id(id) => Ok(Rc::new(SchemeVal::Sym(id.clone()))),
+            SExp::List { elems, tail } => {
+                let tailv = match *tail {
+                    None => None,
+                    Some(ref v) => Some(v.eval(env.clone())?),
+                };
+                let mut lst = vec![];
+                for e in elems {
+                    lst.push(e.eval(env.clone())?);
+                }
+                Ok(SchemeVal::from_list(&lst[..], tailv))
+            }
+        }
     }
 }
