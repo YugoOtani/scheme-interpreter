@@ -69,6 +69,15 @@ impl Exp {
                 let closure = SchemeVal::Closure(env.clone(), prms.clone(), body.clone());
                 Ok(Rc::new(closure))
             }
+            Exp::Set(id, exp) => {
+                let id = id.get();
+                let v = exp.clone().eval(env.clone())?;
+                env.clone()
+                    .borrow_mut()
+                    .replace(id, &v)
+                    .ok_or(format!("could not find value {id}"))?;
+                Ok(Rc::new(SchemeVal::None))
+            }
             _ => todo!(),
         }
     }
