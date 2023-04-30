@@ -44,7 +44,7 @@ impl Exp {
                     args_v.push(v);
                 }
                 match *func.clone() {
-                    SchemeVal::RootFn(ref f) => Ok(Rc::new(f(args_v)?)),
+                    SchemeVal::RootFn(ref f) => Ok(f(args_v)?),
                     SchemeVal::Closure(ref parenv, ref params, ref body) => {
                         let p_a = params_args(params.clone(), args_v)?;
                         let eval_frame = Env {

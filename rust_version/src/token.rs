@@ -128,11 +128,20 @@ pub enum SchemeVal {
     Nil,
     Sym(Id),
     Pair(Rc<SchemeVal>, Rc<SchemeVal>),
-    RootFn(Box<dyn Fn(Vec<Rc<SchemeVal>>) -> Result<SchemeVal, String>>),
+    RootFn(Box<dyn Fn(Vec<Rc<SchemeVal>>) -> Result<Rc<SchemeVal>, String>>),
     Closure(Rc<RefCell<Env>>, Params, Body),
     None,
 }
 impl SchemeVal {
+    pub fn is_list(&self) -> bool {
+        match self {
+            SchemeVal::Pair(_, t) => match t.as_ref() {
+                SchemeVal::Nil => true,
+                t => t.is_list(),
+            },
+            _ => false,
+        }
+    }
     pub fn to_list(&self) -> (Vec<&SchemeVal>, Option<&SchemeVal>) {
         fn helper<'a>(
             v: &'a SchemeVal,
