@@ -12,7 +12,12 @@ use nom::*;
 // &mut str -> Result<Err, ParseRes> として実装してみる
 #[test]
 fn exp_test() {
-    println!("{:?}", parse_top("(define (f x y) (+ x y))"));
+    println!(
+        "{:?}",
+        in_bracket(parse_letrec)(
+            "(letrec ((sum (lambda (x) (if (null? x) 0 (+ (car x) (sum (cdr x))))))) (sum '(1 2 3 4 5)))"
+        )
+    );
 }
 pub fn parse_token(s: &str) -> Result<Toplevel, String> {
     fn helper(s: &str) -> IResult<&str, Toplevel> {
@@ -158,14 +163,16 @@ fn parse_top(s: &str) -> IResult<&str, Toplevel> {
     if let Ok((s, res)) = map(parse_def, Toplevel::Define)(s) {
         return Ok((s, res));
     }
-    if let Ok((s, res)) = map(
-        in_bracket(permutation((tag("load"), multispace1, parse_string))),
-        |(_, _, fname)| Toplevel::Load(fname),
-    )(s)
-    {
+    if let Ok((s, res)) = map(in_bracket(parse_load), |fname| Toplevel::Load(fname))(s) {
         return Ok((s, res));
     }
     map(parse_exp, Toplevel::Exp)(s)
+}
+fn parse_load(s: &str) -> IResult<&str, String> {
+    let (s, _) = tag("load")(s)?;
+    let (s, _) = multispace1(s)?;
+    let (s, str) = parse_string(s)?;
+    Ok((s, str))
 }
 fn parse_string(s: &str) -> IResult<&str, String> {
     let (s, res) = delimited(char('"'), is_not("\""), char('"'))(s)?;
@@ -259,8 +266,9 @@ fn one_bind(s: &str) -> IResult<&str, (Id, Exp)> {
 fn parse_body(s: &str) -> IResult<&str, Body> {
     let (s, defs) = separated_list0(end_token, parse_def)(s)?;
     let (s, _) = multispace0(s)?;
-    let (s, exps) = separated_list1(end_token, parse_exp)(s)?;
-    Ok((s, Body { defs, exps }))
+    let (s, mut exps) = separated_list1(end_token, parse_exp)(s)?;
+    let ret = Box::new(exps.pop().unwrap());
+    Ok((s, Body { defs, exps, ret }))
 }
 
 fn parse_exp(s: &str) -> IResult<&str, Exp> {
@@ -288,7 +296,7 @@ fn parse_exp(s: &str) -> IResult<&str, Exp> {
     if let Ok((s, res)) = in_bracket(parse_ifexp)(s) {
         return Ok((s, res));
     }
-    if let Ok((s, res)) = parse_lambda(s) {
+    if let Ok((s, res)) = in_bracket(parse_lambda)(s) {
         return Ok((s, res));
     }
     if let Ok((s, res)) = in_bracket(parse_let)(s) {

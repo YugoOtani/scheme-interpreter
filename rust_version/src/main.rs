@@ -16,11 +16,17 @@ fn main() {
         print!("mini-scheme[{i}] > ");
         stdout().flush().unwrap();
         let mut buf = String::new();
-        stdin()
-            .read_line(&mut buf)
-            .map_err(|e| e.to_string())
-            .unwrap();
-        match parse_token(&buf[..]) {
+        let input = loop {
+            stdin()
+                .read_line(&mut buf)
+                .map_err(|e| e.to_string())
+                .unwrap();
+
+            if buf.trim().ends_with(';') {
+                break buf.trim().strip_suffix(';').unwrap();
+            }
+        };
+        match parse_token(&input) {
             Err(e) => println!("{e}"),
             Ok(s) => match s.eval(env.clone()) {
                 Ok(res) => {

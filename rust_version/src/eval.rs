@@ -1,5 +1,6 @@
 use crate::{env::*, token::*};
 use std::cell::*;
+use std::collections::HashMap;
 use std::rc::Rc;
 
 type EResult = Result<Rc<SchemeVal>, String>;
@@ -52,15 +53,14 @@ impl Exp {
                             par: Some(parenv.clone()),
                         };
                         let eval_env = Rc::new(RefCell::new(eval_frame));
-                        let Body { defs, exps } = body.clone();
+                        let Body { defs, exps, ret } = body.clone();
                         for def in defs {
                             def.eval(eval_env.clone())?;
                         }
-                        let n = exps.len();
                         for exp in &exps {
                             exp.eval(eval_env.clone())?;
                         }
-                        exps[n - 1].eval(eval_env)
+                        ret.eval(eval_env)
                     }
                     _ => panic!(),
                 }
@@ -79,6 +79,45 @@ impl Exp {
                 Ok(Rc::new(SchemeVal::None))
             }
             Exp::Quote(sexp) => sexp.eval(env.clone()),
+            Exp::LetRec(bind, Body { defs, exps, ret }) => {
+                let env = Env {
+                    vars: HashMap::new(),
+                    par: Some(env.clone()),
+                };
+                let env = Rc::new(RefCell::new(env));
+                for Bind { name, val } in bind {
+                    let val = val.eval(env.clone())?;
+                    let name = name.get().to_string();
+                    env.clone().as_ref().borrow_mut().insert(&name, &val);
+                }
+
+                for def in defs {
+                    def.eval(env.clone())?;
+                }
+                for exp in exps {
+                    exp.eval(env.clone())?;
+                }
+                ret.eval(env.clone())
+            }
+            Exp::If {
+                cond,
+                then_exp,
+                else_exp,
+            } => {
+                let cond = cond.eval(env.clone())?;
+                let b = match cond.as_ref() {
+                    SchemeVal::Bool(b) => b,
+                    _ => return Err(format!("condition of if statement is not bool")),
+                };
+                if *b {
+                    then_exp.eval(env.clone())
+                } else {
+                    match else_exp {
+                        None => Ok(Rc::new(SchemeVal::None)),
+                        Some(v) => v.eval(env.clone()),
+                    }
+                }
+            }
             _ => todo!(),
         }
     }
@@ -125,8 +164,11 @@ impl Id {
     fn eval(&self, env: Rc<RefCell<Env>>) -> EResult {
         let k = self.get();
         let e = env.clone();
-        let eb = e.borrow();
-        let v = eb.find(k).ok_or(format!("could not find value {k}"))?;
+        let r = e.as_ref();
+        let v = r.borrow().find(k).ok_or(format!(
+            "could not find value {k} \n note: env is\n {}",
+            env.clone().as_ref().borrow().to_string()
+        ))?;
         Ok(Rc::clone(&v))
     }
 }

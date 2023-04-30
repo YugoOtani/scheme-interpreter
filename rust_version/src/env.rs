@@ -7,6 +7,7 @@ pub struct Env {
     pub vars: HashMap<String, Rc<SchemeVal>>,
     pub par: Option<Rc<RefCell<Env>>>,
 }
+
 pub fn root_env() -> Env {
     Env {
         vars: root_fn().into_iter().collect(),

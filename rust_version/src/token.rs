@@ -62,6 +62,7 @@ pub struct Bind {
 pub struct Body {
     pub defs: Vec<Define>,
     pub exps: Vec<Exp>,
+    pub ret: Box<Exp>,
 }
 
 #[derive(Debug, Clone)]

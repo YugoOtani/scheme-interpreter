@@ -136,8 +136,8 @@ impl TDbg for Exp {
                 match else_exp {
                     None => Self::pln(n + 1, "None"),
                     Some(v) => {
-                        Self::p(n + 1, "Some");
-                        v.tdbg(0)
+                        Self::pln(n + 1, "Some");
+                        v.tdbg(n + 1)
                     }
                 }
             }
@@ -197,10 +197,11 @@ impl TDbg for Params {
 impl TDbg for Body {
     fn tdbg(&self, n: usize) {
         match &self {
-            Body { defs, exps } => {
+            Body { defs, exps, ret } => {
                 Self::pln(n, "Body");
                 defs.tdbg(n + 1);
                 exps.tdbg(n + 1);
+                ret.tdbg(n + 1);
             }
         }
     }
