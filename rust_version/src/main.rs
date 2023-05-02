@@ -1,21 +1,19 @@
 pub mod dbg_token;
+pub mod env;
 pub mod eval;
-pub mod frame;
 pub mod parser;
 pub mod scheme_fn;
 pub mod token;
+use crate::env::Env;
 use crate::parser::parse_tkns;
 use crate::token::Toplevel;
 use dbg_token::*;
-use frame::{root_frame, Frame};
 use parser::parse_token;
-use std::cell::RefCell;
 use std::fs::File;
 use std::io::Read;
 use std::io::{stdin, stdout, Write};
-use std::rc::Rc;
 fn main() {
-    let frame = Rc::new(RefCell::new(root_frame()));
+    let mut env = Env::new();
     for i in 1.. {
         print!("mini-scheme[{i}] > ");
         stdout().flush().unwrap();
@@ -32,11 +30,11 @@ fn main() {
         };
         match parse_token(&input) {
             Err(e) => println!("{e}"),
-            Ok(Toplevel::Load(fname)) => match exec_load(fname, frame.clone()) {
+            Ok(Toplevel::Load(fname)) => match exec_load(fname, &mut env) {
                 Ok(msg) => println!("{msg}"),
                 Err(msg) => println!("{msg}"),
             },
-            Ok(s) => match s.eval(frame.clone()) {
+            Ok(s) => match s.eval(&mut env) {
                 Ok(res) => {
                     //s.tdbg(0);
                     println!("{}", res.as_ref().to_string());
@@ -50,12 +48,12 @@ fn main() {
     }
 }
 
-fn exec_load(fname: String, frame: Rc<RefCell<Frame>>) -> Result<String, String> {
+fn exec_load(fname: String, env: &mut Env) -> Result<String, String> {
     let fname2 = fname.clone();
     let content = read_file(fname)?;
     let tkns = parse_tkns(&content)?;
     for tkn in tkns {
-        tkn.eval(frame.clone())?;
+        tkn.eval(env)?;
     }
     Ok(format!("load [{fname2}] success"))
 }

@@ -1,4 +1,4 @@
-use crate::frame::Frame;
+use crate::env::Frame;
 use std::cell::*;
 use std::rc::Rc;
 #[derive(Debug, Clone)]
@@ -66,7 +66,7 @@ pub struct Body {
     pub ret: Box<Exp>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct Id(String);
 impl Id {
     pub fn is_valid(c: char) -> bool {

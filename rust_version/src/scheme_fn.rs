@@ -10,9 +10,11 @@ pub fn root_fn() -> Vec<(String, Rc<S>)> {
         sf("null?", is_null),
         sf("=", math_eq),
         sf("caar", caar),
+        sf("cdar", cdar),
         sf("eq?", eq),
         sf("<", math_ls),
         sf(">", math_gt),
+        sf("cons", cons),
     ]
 }
 fn sf(s: &str, f: impl Fn(Vec<Rc<S>>) -> Result<Rc<S>, String> + 'static) -> (String, Rc<S>) {
@@ -127,6 +129,12 @@ fn math_gt(args: Vec<Rc<S>>) -> Result<Rc<S>, String> {
 fn eq(args: Vec<Rc<S>>) -> Result<Rc<S>, String> {
     match &args[..] {
         [x, y] => Ok(Rc::new(S::Bool(Rc::ptr_eq(x, y)))),
+        _ => Err(format!("number of argument is incorrect")),
+    }
+}
+fn cons(args: Vec<Rc<S>>) -> Result<Rc<S>, String> {
+    match &args[..] {
+        [x, y] => Ok(Rc::new(S::Pair(x.clone(), y.clone()))),
         _ => Err(format!("number of argument is incorrect")),
     }
 }
