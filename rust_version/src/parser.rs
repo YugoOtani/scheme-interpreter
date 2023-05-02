@@ -19,6 +19,21 @@ fn exp_test() {
         )
     );
 }
+pub fn parse_tkns(s: &str) -> Result<Vec<Toplevel>, String> {
+    fn helper(s: &str, mut v: Vec<Toplevel>) -> Result<Vec<Toplevel>, String> {
+        match s.trim_start() {
+            "" => Ok(v),
+            s2 => match parse_top(s2) {
+                Err(err) => Err(format!("could not parse \"{s2}\" : [{err}]")),
+                Ok((s2, res)) => {
+                    v.push(res);
+                    helper(s2, v)
+                }
+            },
+        }
+    }
+    helper(s, vec![])
+}
 pub fn parse_token(s: &str) -> Result<Toplevel, String> {
     fn helper(s: &str) -> IResult<&str, Toplevel> {
         let (s, _) = multispace0(s)?;
@@ -249,9 +264,18 @@ fn parse_prm_rest(s: &str) -> IResult<&str, Id> {
 }
 fn parse_branch(s: &str) -> IResult<&str, Branch> {
     let (s, cond) = parse_exp(s)?;
+    match cond {
+        Exp::Id(ref id) => {
+            if id.get() == "else" {
+                return fail("else branch");
+            }
+        }
+        _ => (),
+    };
     let (s, _) = end_token(s)?;
-    let (s, then) = separated_list1(end_token, parse_exp)(s)?;
-    Ok((s, Branch { cond, then }))
+    let (s, mut then) = separated_list1(end_token, parse_exp)(s)?;
+    let ret = then.pop().unwrap();
+    Ok((s, Branch { cond, then, ret }))
 }
 fn parse_bind(s: &str) -> IResult<&str, Bind> {
     let (s2, (name, val)) = in_bracket(one_bind)(s)?;
@@ -403,7 +427,11 @@ fn parse_cond(s: &str) -> IResult<&str, Exp> {
     let (s, _) = multispace0(s)?;
     let (s, branches) = separated_list0(end_token, in_bracket(parse_branch))(s)?;
     let (s, _) = multispace0(s)?;
-    let (s, else_branch) = opt(parse_else)(s)?;
+    let (s, else_branch) = opt(in_bracket(parse_else))(s)?;
+    let else_branch = else_branch.map(|mut v| {
+        let ret = v.pop().unwrap();
+        (v, Box::new(ret))
+    });
     Ok((
         s,
         Exp::Cond {

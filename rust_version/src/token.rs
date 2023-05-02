@@ -42,7 +42,7 @@ pub enum Exp {
     },
     Cond {
         branches: Vec<Branch>,
-        else_branch: Option<Vec<Exp>>,
+        else_branch: Option<(Vec<Exp>, Box<Exp>)>,
     },
     And(Vec<Exp>),
     Or(Vec<Exp>),
@@ -52,6 +52,7 @@ pub enum Exp {
 pub struct Branch {
     pub cond: Exp,
     pub then: Vec<Exp>,
+    pub ret: Exp,
 }
 #[derive(Debug, Clone)]
 pub struct Bind {
@@ -132,6 +133,7 @@ pub enum SchemeVal {
     RootFn(Box<dyn Fn(Vec<Rc<SchemeVal>>) -> Result<Rc<SchemeVal>, String>>),
     Closure(Rc<RefCell<Env>>, Params, Body),
     None,
+    Undefined,
 }
 impl SchemeVal {
     pub fn is_list(&self) -> bool {
@@ -203,6 +205,7 @@ impl SchemeVal {
             }
             SchemeVal::RootFn(_) | SchemeVal::Closure(_, _, _) => "#<procedure>".to_string(),
             SchemeVal::None => "(none)".to_string(),
+            SchemeVal::Undefined => panic!(),
         }
     }
 }

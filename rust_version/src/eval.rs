@@ -10,7 +10,7 @@ impl Toplevel {
         match self {
             Toplevel::Define(def) => def.eval(env),
             Toplevel::Exp(exp) => exp.eval(env),
-            Toplevel::Load(_) => panic!("load must be defined in main.rs"),
+            Toplevel::Load(_) => unreachable!(),
         }
     }
 }
@@ -44,6 +44,7 @@ impl Exp {
                     let v = e.eval(env.clone())?;
                     args_v.push(v);
                 }
+
                 match *func.clone() {
                     SchemeVal::RootFn(ref f) => Ok(f(args_v)?),
                     SchemeVal::Closure(ref parenv, ref params, ref body) => {
@@ -67,6 +68,7 @@ impl Exp {
             }
             Exp::Lambda(prms, body) => {
                 let closure = SchemeVal::Closure(env.clone(), prms.clone(), body.clone());
+
                 Ok(Rc::new(closure))
             }
             Exp::Set(id, exp) => {
@@ -79,11 +81,14 @@ impl Exp {
                 Ok(Rc::new(SchemeVal::None))
             }
             Exp::Quote(sexp) => sexp.eval(env.clone()),
+
+            // TODO: defnew
             Exp::LetRec(bind, Body { defs, exps, ret }) => {
                 let env = Env {
                     vars: HashMap::new(),
                     par: Some(env.clone()),
                 };
+
                 let env = Rc::new(RefCell::new(env));
                 for Bind { name, val } in bind {
                     let val = val.eval(env.clone())?;
@@ -118,6 +123,66 @@ impl Exp {
                     }
                 }
             }
+            Exp::Cond {
+                branches,
+                else_branch,
+            } => {
+                let mut ite = branches.iter();
+                loop {
+                    match ite.next() {
+                        None => match else_branch {
+                            Some((exps, ret)) => {
+                                for exp in exps {
+                                    exp.eval(env.clone())?;
+                                }
+                                break ret.eval(env.clone());
+                            }
+                            None => break Ok(Rc::new(SchemeVal::None)),
+                        },
+                        Some(Branch { cond, then, ret }) => {
+                            let cond = cond.eval(env.clone())?;
+                            match cond.as_ref() {
+                                SchemeVal::Bool(b) => {
+                                    if *b {
+                                        for exp in then {
+                                            exp.eval(env.clone())?;
+                                        }
+                                        break ret.eval(env.clone());
+                                    }
+                                }
+                                _ => break Err(format!("[cond] condition must be boolean")),
+                            }
+                        }
+                    }
+                }
+            }
+            Exp::And(exps) => match &exps[..] {
+                [] => Ok(Rc::new(SchemeVal::Bool(true))),
+                v => {
+                    let (last, elems) = v.split_last().unwrap();
+                    for exp in elems {
+                        match exp.eval(env.clone())?.as_ref() {
+                            SchemeVal::Bool(false) => return Ok(Rc::new(SchemeVal::Bool(false))),
+                            _ => continue,
+                        }
+                    }
+                    last.eval(env.clone())
+                }
+            },
+            Exp::Or(exps) => match &exps[..] {
+                [] => Ok(Rc::new(SchemeVal::Bool(false))),
+                v => {
+                    let (last, elems) = v.split_last().unwrap();
+                    for exp in elems {
+                        let v = exp.eval(env.clone())?;
+                        match v.as_ref() {
+                            SchemeVal::Bool(false) => continue,
+                            _ => return Ok(v),
+                        }
+                    }
+                    last.eval(env.clone())
+                }
+            },
             _ => todo!(),
         }
     }

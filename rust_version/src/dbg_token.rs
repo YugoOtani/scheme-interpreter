@@ -80,7 +80,13 @@ impl TDbg for Exp {
             } => {
                 Self::pln(n, "Exp(Cond)");
                 branches.tdbg(n + 1);
-                else_branch.tdbg(n + 1);
+                match else_branch {
+                    Some((v, e)) => {
+                        v.tdbg(n + 1);
+                        e.tdbg(n + 1);
+                    }
+                    None => (),
+                }
             }
             Exp::Const(c) => {
                 Self::pln(n, "Exp(Const)");
@@ -164,10 +170,11 @@ impl TDbg for Define {
 impl TDbg for Branch {
     fn tdbg(&self, n: usize) {
         match self {
-            Branch { cond, then } => {
+            Branch { cond, then, ret } => {
                 Self::pln(n, "Branch");
                 cond.tdbg(n + 1);
                 then.tdbg(n + 1);
+                ret.tdbg(n + 1);
             }
         }
     }
