@@ -252,7 +252,7 @@ impl Id {
         let v = env.get_frame().borrow().find(self).ok_or(format!(
             "could not find value {} \n note: frame is\n {}",
             self.get(),
-            env.get_frame().as_ref().borrow().to_string()
+            env.get_frame().as_ref().borrow().to_string()?
         ))?;
         Ok(Rc::clone(&v))
     }

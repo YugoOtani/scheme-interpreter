@@ -28,24 +28,21 @@ fn main() {
                 break buf.trim().strip_suffix(';').unwrap();
             }
         };
-        match parse_token(&input) {
-            Err(e) => println!("{e}"),
-            Ok(Toplevel::Load(fname)) => match exec_load(fname, &mut env) {
-                Ok(msg) => println!("{msg}"),
-                Err(msg) => println!("{msg}"),
-            },
-            Ok(s) => match s.eval(&mut env) {
-                Ok(res) => {
-                    //s.tdbg(0);
-                    println!("{}", res.as_ref().to_string());
-                }
-                Err(msg) => {
-                    println!("{}", msg);
-                    s.tdbg(0);
-                }
-            },
+        match interpret(&input, &mut env) {
+            Ok(res) => println!("{res}"),
+            Err(msg) => println!("{msg}"),
         }
     }
+}
+
+fn interpret(input: &str, env: &mut Env) -> Result<String, String> {
+    let top = parse_token(input)?;
+    //top.tdbg(0);
+    let ret = match top {
+        Toplevel::Load(fname) => exec_load(fname, env)?,
+        _ => top.eval(env)?.to_string()?,
+    };
+    Ok(ret)
 }
 
 fn exec_load(fname: String, env: &mut Env) -> Result<String, String> {

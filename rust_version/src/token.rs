@@ -174,38 +174,38 @@ impl SchemeVal {
             ))
         }
     }
-    pub fn to_string(&self) -> String {
+    pub fn to_string(&self) -> Result<String, String> {
         match self {
-            SchemeVal::Num(n) => n.to_string(),
+            SchemeVal::Num(n) => Ok(n.to_string()),
             SchemeVal::Bool(b) => {
                 if *b {
-                    "#t".to_string()
+                    Ok("#t".to_string())
                 } else {
-                    "#f".to_string()
+                    Ok("#f".to_string())
                 }
             }
-            SchemeVal::String(s) => format!("\"{s}\""),
-            SchemeVal::Nil => "()".to_string(),
-            SchemeVal::Sym(id) => id.get().to_string(),
+            SchemeVal::String(s) => Ok(format!("\"{s}\"")),
+            SchemeVal::Nil => Ok("()".to_string()),
+            SchemeVal::Sym(id) => Ok(id.get().to_string()),
             SchemeVal::Pair(_, _) => {
                 // (a (b (c d))) => (a b c . d)
                 let (lst, tail) = self.to_list();
                 assert!(!lst.is_empty());
                 let mut ret = String::from("(");
-                ret.push_str(&lst[0].to_string());
+                ret.push_str(&lst[0].to_string()?);
                 for e in &lst[1..] {
-                    ret.push_str(&format!(" {}", e.to_string())[..]);
+                    ret.push_str(&format!(" {}", e.to_string()?)[..]);
                 }
                 let tail = match tail {
                     None => ")".to_string(),
-                    Some(t) => format!(" . {})", t.to_string()),
+                    Some(t) => format!(" . {})", t.to_string()?),
                 };
                 ret.push_str(&tail[..]);
-                ret
+                Ok(ret)
             }
-            SchemeVal::RootFn(_) | SchemeVal::Closure(_, _, _) => "#<procedure>".to_string(),
-            SchemeVal::None => "(none)".to_string(),
-            SchemeVal::Undefined => panic!(),
+            SchemeVal::RootFn(_) | SchemeVal::Closure(_, _, _) => Ok("#<procedure>".to_string()),
+            SchemeVal::None => Ok("(none)".to_string()),
+            SchemeVal::Undefined => Err(format!("cannot use unassigned value")),
         }
     }
 }
