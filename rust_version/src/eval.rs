@@ -52,16 +52,9 @@ impl Exp {
                         let eval_frame = Rc::new(RefCell::new(eval_frame));
                         let old_frame = env.get_frame();
                         env.set_frame(eval_frame);
-                        let Body { defs, exps, ret } = body.clone();
-                        for def in defs {
-                            def.eval(env)?;
-                        }
-                        for exp in &exps {
-                            exp.eval(env)?;
-                        }
-                        let ret = ret.eval(env);
+                        let ret = eval_body(body, env)?;
                         env.set_frame(old_frame);
-                        ret
+                        Ok(ret)
                     }
                     _ => panic!(),
                 }
@@ -104,27 +97,11 @@ impl Exp {
                 env.set_frame(current_frame);
                 Ok(r)
             }
-            // TODO: defnew  <- not to appear the same id in the left hand
+            Exp::Let2(binds, body) => do_let2(binds, body, env),
+
             /*Exp::LetRec(bind, Body { defs, exps, ret }) => {
-                let frame = Frame {
-                    vars: HashMap::new(),
-                    par: Some(frame.clone()),
-                };
-
-                let frame = Rc::new(RefCell::new(frame));
-                for Bind { name, val } in bind {
-                    let val = val.eval(frame.clone())?;
-                    let name = name.get().to_string();
-                    frame.clone().as_ref().borrow_mut().insert(&name, &val);
-                }
-
-                for def in defs {
-                    def.eval(frame.clone())?;
-                }
-                for exp in exps {
-                    exp.eval(frame.clone())?;
-                }
-                ret.eval(frame.clone())
+                let frame = env.get_frame();
+                let new_frame = Frame::empty(&frame);
             }*/
             Exp::If {
                 cond,
@@ -206,6 +183,30 @@ impl Exp {
                 }
             },
             _ => todo!(),
+        }
+    }
+}
+fn eval_body(body: &Body, env: &mut Env) -> Result<Rc<SchemeVal>, String> {
+    let Body { defs, exps, ret } = body;
+    for def in defs {
+        def.eval(env)?;
+    }
+    for exp in exps {
+        exp.eval(env)?;
+    }
+    ret.eval(env)
+}
+fn do_let2(binds: &[Bind], body: &Body, env: &mut Env) -> Result<Rc<SchemeVal>, String> {
+    match binds {
+        [] => eval_body(body, env),
+        [Bind { name, val }, tail @ ..] => {
+            let val = val.eval(env)?;
+            let par = env.get_frame();
+            env.set_frame(Frame::empty(&par));
+            env.get_frame().borrow_mut().insert_new(name, &val).unwrap();
+            let ret = do_let2(tail, body, env)?;
+            env.set_frame(par);
+            Ok(ret)
         }
     }
 }
