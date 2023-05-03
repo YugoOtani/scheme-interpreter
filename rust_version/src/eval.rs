@@ -1,7 +1,6 @@
 use crate::{env::*, token::*};
 use std::cell::*;
 use std::rc::Rc;
-
 type EResult = Result<Rc<SchemeVal>, String>;
 
 impl Toplevel {
@@ -80,8 +79,32 @@ impl Exp {
                 Ok(Rc::new(SchemeVal::None))
             }
             Exp::Quote(sexp) => sexp.eval(env),
-
-            // TODO: defnew
+            Exp::Let {
+                name: None,
+                bind,
+                body: Body { defs, exps, ret },
+            } => {
+                let current_frame = env.get_frame();
+                let new_frame = Frame::empty(&current_frame);
+                for Bind { name, val } in bind {
+                    let v = val.eval(env)?; // in current_frame
+                    new_frame
+                        .borrow_mut()
+                        .insert_new(&name, &v)
+                        .ok_or("[let] cannot use the same parameter in let bindings")?;
+                }
+                env.set_frame(new_frame);
+                for def in defs {
+                    def.eval(env)?;
+                }
+                for exp in exps {
+                    exp.eval(env)?;
+                }
+                let r = ret.eval(env)?;
+                env.set_frame(current_frame);
+                Ok(r)
+            }
+            // TODO: defnew  <- not to appear the same id in the left hand
             /*Exp::LetRec(bind, Body { defs, exps, ret }) => {
                 let frame = Frame {
                     vars: HashMap::new(),

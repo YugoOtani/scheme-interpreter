@@ -184,7 +184,7 @@ impl SchemeVal {
                     "#f".to_string()
                 }
             }
-            SchemeVal::String(s) => s.to_string(),
+            SchemeVal::String(s) => format!("\"{s}\""),
             SchemeVal::Nil => "()".to_string(),
             SchemeVal::Sym(id) => id.get().to_string(),
             SchemeVal::Pair(_, _) => {
