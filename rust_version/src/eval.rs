@@ -1,5 +1,4 @@
 use crate::{env::*, token::*};
-use std::cell::*;
 use std::rc::Rc;
 type EResult = Result<Rc<SchemeVal>, String>;
 
@@ -45,11 +44,13 @@ impl Exp {
                     SchemeVal::RootFn(ref f) => Ok(f(args_v)?),
                     SchemeVal::Closure(ref parframe, ref params, ref body) => {
                         let p_a = params_args(params.clone(), args_v)?;
-                        let eval_frame = Frame {
-                            vars: p_a.into_iter().collect(),
-                            par: Some(parframe.clone()),
-                        };
-                        let eval_frame = Rc::new(RefCell::new(eval_frame));
+                        let eval_frame = Frame::empty(parframe);
+                        for (id, val) in &p_a {
+                            eval_frame
+                                .borrow_mut()
+                                .insert_new(id, val)
+                                .ok_or("cannot use same parameter in function")?;
+                        }
                         let old_frame = env.get_frame();
                         env.set_frame(eval_frame);
                         let ret = eval_body(body, env)?;
@@ -116,10 +117,31 @@ impl Exp {
                 do_let2(&binds, body, env)
             }
 
-            /*Exp::LetRec(bind, Body { defs, exps, ret }) => {
+            Exp::LetRec(bind, body) => {
                 let frame = env.get_frame();
                 let new_frame = Frame::empty(&frame);
-            }*/
+                for Bind { name, val: _ } in bind {
+                    new_frame
+                        .borrow_mut()
+                        .alloc_new(&name)
+                        .ok_or("[letrec] cannot use the same variable in bindings")?;
+                }
+                env.set_frame(new_frame);
+                let mut vals = vec![];
+                for Bind { name: _, val } in bind {
+                    vals.push(val.eval(env)?);
+                }
+                for (name, val) in bind
+                    .iter()
+                    .zip(vals.iter())
+                    .map(|(Bind { name, val: _ }, v)| (name, v))
+                {
+                    env.get_frame().borrow_mut().replace(name, val).unwrap()
+                }
+                let ret = eval_body(body, env);
+                env.set_frame(frame);
+                ret
+            }
             Exp::If {
                 cond,
                 then_exp,
