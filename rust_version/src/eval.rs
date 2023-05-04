@@ -97,7 +97,24 @@ impl Exp {
                 env.set_frame(current_frame);
                 Ok(r)
             }
-            Exp::Let2(binds, body) => do_let2(binds, body, env),
+            //(let ((x 1)) (let* ((y (lambda() x)) (x 2)) (y))) ;1
+            Exp::Let2(binds, body) => {
+                /*
+                let initial_f = env.get_frame();
+                let f = Frame::empty(&initial_f);
+                env.set_frame(f);
+                for Bind { name, val } in binds {
+                    let val = val.eval(env)?;
+                    env.get_frame()
+                        .borrow_mut()
+                        .insert_new(name, &val)
+                        .ok_or("[let*] cannot use the same parameter in let bindings")?;
+                }
+                let ret = eval_body(body, env)?;
+                env.set_frame(initial_f);
+                Ok(ret)*/
+                do_let2(&binds, body, env)
+            }
 
             /*Exp::LetRec(bind, Body { defs, exps, ret }) => {
                 let frame = env.get_frame();
@@ -250,11 +267,12 @@ impl Const {
 }
 impl Id {
     fn eval(&self, env: &mut Env) -> EResult {
-        let v = env.get_frame().borrow().find(self).ok_or(format!(
-            "could not find value {} \n note: frame is\n {}",
-            self.get(),
-            env.get_frame().as_ref().borrow().to_string()?
-        ))?;
+        let v = env
+            .get_frame()
+            .as_ref()
+            .borrow()
+            .find(self)
+            .ok_or(format!("could not find value {} \n", self.get()))?;
         Ok(Rc::clone(&v))
     }
 }

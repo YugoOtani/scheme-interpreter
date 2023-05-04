@@ -37,7 +37,7 @@ fn main() {
             Ok(s) => match s.eval(&mut env) {
                 Ok(res) => {
                     //s.tdbg(0);
-                    println!("{}", res.as_ref().to_string());
+                    println!("{}", res.as_ref().to_string())
                 }
                 Err(msg) => {
                     println!("{}", msg);
