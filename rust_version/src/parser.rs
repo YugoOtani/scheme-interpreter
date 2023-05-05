@@ -7,9 +7,6 @@ use nom::error::ParseError;
 use nom::sequence::*;
 use nom::*;
 
-// TODO : パーサーを
-//  &str -> Result<Err, (&str, ParseRes)> ではなく
-// &mut str -> Result<Err, ParseRes> として実装してみる
 #[test]
 fn exp_test() {
     println!(
