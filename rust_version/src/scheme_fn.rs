@@ -99,6 +99,7 @@ fn is_null(args: Vec<Rc<S>>) -> Result<Rc<S>, String> {
         _ => Err(format!("number of argument is incorrect")),
     }
 }
+
 fn math_eq(args: Vec<Rc<S>>) -> Result<Rc<S>, String> {
     match &args[..] {
         [x, y] => match (x.as_ref(), y.as_ref()) {

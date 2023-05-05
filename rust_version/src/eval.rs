@@ -73,11 +73,8 @@ impl Exp {
                 Ok(Rc::new(SchemeVal::None))
             }
             Exp::Quote(sexp) => sexp.eval(env),
-            Exp::Let {
-                name: None,
-                bind,
-                body: Body { defs, exps, ret },
-            } => {
+
+            Exp::Let { name, bind, body } => {
                 let current_frame = env.get_frame();
                 let new_frame = Frame::empty(&current_frame);
                 for Bind { name, val } in bind {
@@ -88,34 +85,28 @@ impl Exp {
                         .ok_or("[let] cannot use the same parameter in let bindings")?;
                 }
                 env.set_frame(new_frame);
-                for def in defs {
-                    def.eval(env)?;
-                }
-                for exp in exps {
-                    exp.eval(env)?;
-                }
-                let r = ret.eval(env)?;
-                env.set_frame(current_frame);
-                Ok(r)
-            }
-            //(let ((x 1)) (let* ((y (lambda() x)) (x 2)) (y))) ;1
-            Exp::Let2(binds, body) => {
-                /*
-                let initial_f = env.get_frame();
-                let f = Frame::empty(&initial_f);
-                env.set_frame(f);
-                for Bind { name, val } in binds {
-                    let val = val.eval(env)?;
+                if let Some(name) = name {
+                    let prms = bind
+                        .iter()
+                        .map(|Bind { name, val: _ }| name.clone())
+                        .collect();
+                    let closure = SchemeVal::Closure(
+                        env.get_frame(),
+                        Params { prms, other: None },
+                        body.clone(),
+                    );
                     env.get_frame()
                         .borrow_mut()
-                        .insert_new(name, &val)
-                        .ok_or("[let*] cannot use the same parameter in let bindings")?;
+                        .insert_new(name, &Rc::new(closure))
+                        .ok_or("[named-let] name {} is already used")?;
                 }
-                let ret = eval_body(body, env)?;
-                env.set_frame(initial_f);
-                Ok(ret)*/
-                do_let2(&binds, body, env)
+
+                let r = eval_body(body, env);
+                env.set_frame(current_frame);
+                r
             }
+            //(let ((x 1)) (let* ((y (lambda() x)) (x 2)) (y))) ;1
+            Exp::Let2(binds, body) => do_let2(&binds, body, env),
 
             Exp::LetRec(bind, body) => {
                 let frame = env.get_frame();
@@ -221,7 +212,15 @@ impl Exp {
                     last.eval(env)
                 }
             },
-            _ => todo!(),
+            Exp::Begin(exps) => {
+                let (last, exps) = exps
+                    .split_last()
+                    .ok_or("begin must at least have one argument")?;
+                for exp in exps {
+                    exp.eval(env)?;
+                }
+                last.eval(env)
+            }
         }
     }
 }
