@@ -492,6 +492,7 @@ fn parse_sexp(s: &str) -> IResult<&str, SExp> {
     }
     in_bracket(parse_sexplist)(s)
 }
+
 fn parse_sexplist(s: &str) -> IResult<&str, SExp> {
     let (s, exps) = separated_list0(end_token, parse_sexp)(s)?;
     fn helper(s: &str) -> IResult<&str, SExp> {

@@ -57,7 +57,11 @@ impl Exp {
                         env.set_frame(old_frame);
                         Ok(ret)
                     }
-                    _ => panic!(),
+                    _ => Err(format!(
+                        "result of {:?
+                    } is not a function",
+                        fname
+                    )),
                 }
             }
             Exp::Lambda(prms, body) => {

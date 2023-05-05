@@ -95,7 +95,7 @@ impl Id {
     }
     pub fn new(s: &str) -> Option<Id> {
         // 数値かどうか検査
-        if s.chars().all(|c| Self::is_valid(c)) || s.parse::<i64>().is_ok() {
+        if s.chars().all(|c| Self::is_valid(c)) && s.parse::<i64>().is_err() && s != "." {
             Some(Id(s.to_string()))
         } else {
             None
@@ -141,6 +141,7 @@ impl SchemeVal {
                 SchemeVal::Nil => true,
                 t => t.is_list(),
             },
+            SchemeVal::Nil => true,
             _ => false,
         }
     }
