@@ -1,4 +1,5 @@
 use crate::env::Frame;
+use anyhow::Result;
 use std::cell::*;
 use std::rc::Rc;
 #[derive(Debug, Clone)]
@@ -130,7 +131,7 @@ pub enum SchemeVal {
     Nil,
     Sym(Id),
     Pair(Rc<SchemeVal>, Rc<SchemeVal>),
-    RootFn(Box<dyn Fn(Vec<Rc<SchemeVal>>) -> Result<Rc<SchemeVal>, String>>),
+    RootFn(Box<dyn Fn(Vec<Rc<SchemeVal>>) -> Result<Rc<SchemeVal>>>),
     Closure(Rc<RefCell<Frame>>, Params, Body),
     None,
 }

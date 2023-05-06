@@ -7,6 +7,8 @@ pub mod token;
 use crate::env::Env;
 use crate::parser::parse_tkns;
 use crate::token::Toplevel;
+use anyhow::anyhow;
+use anyhow::Result;
 use dbg_token::*;
 use parser::parse_token;
 use std::fs::File;
@@ -59,7 +61,7 @@ fn main() {
     }
 }
 
-fn exec_load(fname: String, env: &mut Env) -> Result<String, String> {
+fn exec_load(fname: String, env: &mut Env) -> Result<String> {
     let fname2 = fname.clone();
     let content = read_file(fname)?;
     let tkns = parse_tkns(&content)?;
@@ -69,12 +71,12 @@ fn exec_load(fname: String, env: &mut Env) -> Result<String, String> {
     Ok(format!("load [{fname2}] success"))
 }
 
-fn read_file(fname: String) -> Result<String, String> {
+fn read_file(fname: String) -> Result<String> {
     let fname2 = fname.clone();
-    let mut file = File::open(fname).map_err(|e| format!("error opening file [{}]", e))?;
+    let mut file = File::open(fname).map_err(|e| anyhow!("{} : {}", fname2.to_string(), e))?;
     let mut content = String::new();
     file.read_to_string(&mut content)
-        .map_err(|e| format!("error reading content of file[{fname2}] : {}", e))?;
+        .map_err(|e| anyhow!("{} : {}", fname2.to_string(), e))?;
     Ok(content)
 }
 

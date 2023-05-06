@@ -1,4 +1,5 @@
 use crate::token::*;
+use anyhow::{bail, Result};
 use nom::branch::*;
 use nom::bytes::complete::*;
 use nom::character::complete::*;
@@ -6,7 +7,6 @@ use nom::combinator::*;
 use nom::error::ParseError;
 use nom::sequence::*;
 use nom::*;
-
 #[test]
 fn exp_test() {
     println!(
@@ -16,12 +16,12 @@ fn exp_test() {
         )
     );
 }
-pub fn parse_tkns(s: &str) -> Result<Vec<Toplevel>, String> {
-    fn helper(s: &str, mut v: Vec<Toplevel>) -> Result<Vec<Toplevel>, String> {
+pub fn parse_tkns(s: &str) -> Result<Vec<Toplevel>> {
+    fn helper(s: &str, mut v: Vec<Toplevel>) -> Result<Vec<Toplevel>> {
         match s.trim_start() {
             "" => Ok(v),
             s2 => match parse_top(s2) {
-                Err(err) => Err(format!("could not parse \"{s2}\" : [{err}]")),
+                Err(err) => bail!("could not parse \"{s2}\" : [{err}]"),
                 Ok((s2, res)) => {
                     v.push(res);
                     helper(s2, v)
@@ -31,7 +31,7 @@ pub fn parse_tkns(s: &str) -> Result<Vec<Toplevel>, String> {
     }
     helper(s, vec![])
 }
-pub fn parse_token(s: &str) -> Result<Toplevel, String> {
+pub fn parse_token(s: &str) -> Result<Toplevel> {
     fn helper(s: &str) -> IResult<&str, Toplevel> {
         let (s, _) = multispace0(s)?;
         let (s, res) = parse_top(s)?;
@@ -39,9 +39,9 @@ pub fn parse_token(s: &str) -> Result<Toplevel, String> {
         Ok((s, res))
     }
     match helper(s) {
-        Err(e) => Err(format!("{:?}", e)),
+        Err(e) => bail!("{:?}", e),
         Ok(("", res)) => Ok(res),
-        Ok((s, _)) => Err(format!("{s} remains untaken")),
+        Ok((s, _)) => bail!("{s} remains untaken"),
     }
 }
 fn fail<T>(s: &str) -> IResult<&str, T> {
