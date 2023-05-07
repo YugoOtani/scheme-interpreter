@@ -14,7 +14,6 @@ use parser::parse_token;
 use std::fs::File;
 use std::io::Read;
 use std::io::{stdin, stdout, Write};
-
 const CONSOLE: &str = "mini-scheme > ";
 fn main() {
     let mut env = Env::new();
@@ -50,7 +49,7 @@ fn main() {
             },
             Ok(s) => match s.eval(&mut env) {
                 Ok(res) => {
-                    println!("{}", res.as_ref().to_string())
+                    println!("{}", res.to_string())
                 }
                 Err(msg) => {
                     println!("{}", msg);

@@ -1,4 +1,4 @@
-use crate::env::Frame;
+use crate::env::{Env, Frame};
 use anyhow::Result;
 use std::cell::*;
 use std::rc::Rc;
@@ -130,53 +130,61 @@ pub enum SchemeVal {
     String(String),
     Nil,
     Sym(Id),
-    Pair(Rc<SchemeVal>, Rc<SchemeVal>),
-    RootFn(Box<dyn Fn(Vec<Rc<SchemeVal>>) -> Result<Rc<SchemeVal>>>),
+    Pair(V, V),
+    RootFn(Func),
     Closure(Rc<RefCell<Frame>>, Params, Body),
     None,
 }
-impl SchemeVal {
-    pub fn is_list(&self) -> bool {
-        match self {
-            SchemeVal::Pair(_, t) => match t.as_ref() {
-                SchemeVal::Nil => true,
-                t => t.is_list(),
-            },
-            SchemeVal::Nil => true,
-            _ => false,
-        }
+pub struct V(Rc<RefCell<SchemeVal>>);
+
+type Func = Box<dyn Fn(Vec<V>, &mut Env) -> Result<V>>;
+
+impl V {
+    pub fn ptr_eq(this: &Self, other: &Self) -> bool {
+        Rc::ptr_eq(&this.0, &other.0)
     }
-    pub fn to_list(&self) -> (Vec<&SchemeVal>, Option<&SchemeVal>) {
-        fn helper<'a>(
-            v: &'a SchemeVal,
-            mut acc: Vec<&'a SchemeVal>,
-        ) -> (Vec<&'a SchemeVal>, Option<&'a SchemeVal>) {
-            match v {
+    pub fn num(n: Num) -> V {
+        Self::new(SchemeVal::Num(n))
+    }
+    pub fn bool(b: bool) -> V {
+        Self::new(SchemeVal::Bool(b))
+    }
+    pub fn string(s: String) -> V {
+        Self::new(SchemeVal::String(s))
+    }
+    pub fn nil() -> V {
+        Self::new(SchemeVal::Nil)
+    }
+    pub fn sym(id: Id) -> V {
+        Self::new(SchemeVal::Sym(id))
+    }
+    pub fn none() -> V {
+        Self::new(SchemeVal::None)
+    }
+    pub fn new(s: SchemeVal) -> V {
+        V(Rc::new(RefCell::new(s)))
+    }
+    pub fn clone(&self) -> V {
+        V(self.0.clone())
+    }
+    pub fn get(&self) -> Rc<RefCell<SchemeVal>> {
+        self.0.clone()
+    }
+    pub fn to_list(&self) -> (Vec<V>, Option<V>) {
+        fn helper(v: &V, mut acc: Vec<V>) -> (Vec<V>, Option<V>) {
+            match &*v.get().borrow() {
                 SchemeVal::Pair(h, t) => {
-                    acc.push(h.as_ref());
-                    helper(t.as_ref(), acc)
+                    acc.push(h.clone());
+                    helper(&t, acc)
                 }
                 SchemeVal::Nil => (acc, None),
-                _ => (acc, Some(v)),
+                _ => (acc, Some(v.clone())),
             }
         }
         helper(self, vec![])
     }
-    pub fn from_list(v: &[Rc<SchemeVal>], tail: Option<Rc<SchemeVal>>) -> Rc<SchemeVal> {
-        if v.len() == 0 {
-            match tail {
-                None => Rc::new(SchemeVal::Nil),
-                Some(v) => v,
-            }
-        } else {
-            Rc::new(SchemeVal::Pair(
-                v[0].clone(),
-                Self::from_list(&v[1..], tail),
-            ))
-        }
-    }
     pub fn to_string(&self) -> String {
-        match self {
+        match &*self.get().borrow() {
             SchemeVal::Num(n) => n.to_string(),
             SchemeVal::Bool(b) => {
                 if *b {
@@ -206,6 +214,27 @@ impl SchemeVal {
             }
             SchemeVal::RootFn(_) | SchemeVal::Closure(_, _, _) => "#<procedure>".to_string(),
             SchemeVal::None => "(none)".to_string(),
+        }
+    }
+    pub fn from_list(v: &[V], tail: Option<V>) -> V {
+        if v.len() == 0 {
+            match tail {
+                None => V::new(SchemeVal::Nil),
+                Some(v) => v,
+            }
+        } else {
+            let pair = SchemeVal::Pair(v[0].clone(), Self::from_list(&v[1..], tail));
+            V::new(pair)
+        }
+    }
+    pub fn is_list(&self) -> bool {
+        match &*self.get().borrow() {
+            SchemeVal::Pair(_, t) => match *t.0.clone().borrow() {
+                SchemeVal::Nil => true,
+                _ => t.is_list(),
+            },
+            SchemeVal::Nil => true,
+            _ => false,
         }
     }
 }

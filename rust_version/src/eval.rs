@@ -1,7 +1,6 @@
 use crate::{env::*, token::*};
 use anyhow::{bail, ensure, Context, Result};
-use std::rc::Rc;
-type EResult = Result<Rc<SchemeVal>>;
+type EResult = Result<V>;
 
 impl Toplevel {
     pub fn eval(&self, env: &mut Env) -> EResult {
@@ -18,12 +17,12 @@ impl Define {
             Define::Var(id, exp) => {
                 let v = exp.eval(env)?;
                 env.get_frame().borrow_mut().insert(id, &v);
-                Ok(Rc::new(SchemeVal::None))
+                Ok(V::new(SchemeVal::None))
             }
             Define::Func(id, param, body) => {
                 let closure = SchemeVal::Closure(env.get_frame(), param.clone(), body.clone());
-                env.get_frame().borrow_mut().insert(id, &Rc::new(closure));
-                Ok(Rc::new(SchemeVal::None))
+                env.get_frame().borrow_mut().insert(id, &V::new(closure));
+                Ok(V::new(SchemeVal::None))
             }
         }
     }
@@ -52,14 +51,14 @@ impl Exp {
                         args_v.push(v);
                     }
                     let f = func.clone();
-                    match f.as_ref() {
+                    match &*f.get().borrow() {
                         SchemeVal::RootFn(f) => {
                             env.set_frame(initial_frame);
-                            break f(args_v);
+                            break f(args_v, env);
                         }
                         SchemeVal::Closure(parframe, params, Body { defs, exps, ret }) => {
                             let p_a = params_args(params.clone(), args_v)?;
-                            let eval_frame = Frame::empty(parframe);
+                            let eval_frame = Frame::empty(&parframe);
                             for (id, val) in &p_a {
                                 eval_frame
                                     .borrow_mut()
@@ -82,7 +81,7 @@ impl Exp {
                 Exp::Lambda(prms, body) => {
                     let closure = SchemeVal::Closure(env.get_frame(), prms.clone(), body.clone());
                     env.set_frame(initial_frame);
-                    break Ok(Rc::new(closure));
+                    break Ok(V::new(closure));
                 }
                 Exp::Set(id, exp) => {
                     let v = exp.eval(env)?;
@@ -91,7 +90,7 @@ impl Exp {
                         .replace(&id, &v)
                         .with_context(|| format!("could not find value {}", id.get()))?;
                     env.set_frame(initial_frame);
-                    break Ok(Rc::new(SchemeVal::None));
+                    break Ok(V::new(SchemeVal::None));
                 }
                 Exp::Quote(sexp) => {
                     let r = sexp.eval(env);
@@ -121,7 +120,7 @@ impl Exp {
                         );
                         env.get_frame()
                             .borrow_mut()
-                            .insert_new(&name, &Rc::new(closure))
+                            .insert_new(&name, &V::new(closure))
                             .context("[named-let] name {} is already used as binding parameter")?;
                     }
                     let Body { defs, exps, ret } = body;
@@ -180,17 +179,17 @@ impl Exp {
                     else_exp,
                 } => {
                     let cond = cond.eval(env)?;
-                    let b = match cond.as_ref() {
+                    let b = match *cond.get().borrow() {
                         SchemeVal::Bool(b) => b,
                         _ => bail!("condition of if statement is not bool"),
                     };
-                    if *b {
+                    if b {
                         exp = *then_exp;
                     } else {
                         match else_exp {
                             None => {
                                 env.set_frame(initial_frame);
-                                break Ok(Rc::new(SchemeVal::None));
+                                break Ok(V::new(SchemeVal::None));
                             }
                             Some(v) => {
                                 exp = *v;
@@ -214,14 +213,14 @@ impl Exp {
                                 }
                                 None => {
                                     env.set_frame(initial_frame);
-                                    return Ok(Rc::new(SchemeVal::None));
+                                    return Ok(V::new(SchemeVal::None));
                                 }
                             },
                             Some(Branch { cond, then, ret }) => {
                                 let cond = cond.eval(env)?;
-                                match cond.as_ref() {
+                                match *cond.get().borrow() {
                                     SchemeVal::Bool(b) => {
-                                        if *b {
+                                        if b {
                                             for exp in then {
                                                 exp.eval(env)?;
                                             }
@@ -237,15 +236,15 @@ impl Exp {
                 Exp::And(exps) => match &exps[..] {
                     [] => {
                         env.set_frame(initial_frame);
-                        break Ok(Rc::new(SchemeVal::Bool(true)));
+                        break Ok(V::new(SchemeVal::Bool(true)));
                     }
                     v => {
                         let (last, elems) = v.split_last().unwrap();
                         for exp in elems {
-                            match exp.eval(env)?.as_ref() {
+                            match *exp.eval(env)?.get().borrow() {
                                 SchemeVal::Bool(false) => {
                                     env.set_frame(initial_frame);
-                                    return Ok(Rc::new(SchemeVal::Bool(false)));
+                                    return Ok(V::new(SchemeVal::Bool(false)));
                                 }
                                 _ => continue,
                             }
@@ -256,13 +255,13 @@ impl Exp {
                 Exp::Or(exps) => match &exps[..] {
                     [] => {
                         env.set_frame(initial_frame);
-                        break Ok(Rc::new(SchemeVal::Bool(false)));
+                        break Ok(V::new(SchemeVal::Bool(false)));
                     }
                     v => {
                         let (last, elems) = v.split_last().unwrap();
                         for exp in elems {
                             let v = exp.eval(env)?;
-                            match v.as_ref() {
+                            match *v.get().borrow() {
                                 SchemeVal::Bool(false) => continue,
                                 _ => {
                                     env.set_frame(initial_frame);
@@ -299,7 +298,7 @@ fn let2_env(binds: &[Bind], env: &mut Env) -> Result<()> {
         }
     }
 }
-fn params_args(p: Params, args: Vec<Rc<SchemeVal>>) -> Result<Vec<(Id, Rc<SchemeVal>)>> {
+fn params_args(p: Params, args: Vec<V>) -> Result<Vec<(Id, V)>> {
     let Params { prms, other } = p;
     ensure!(prms.len() <= args.len(), "number of argument is incorrect");
     match other {
@@ -309,7 +308,7 @@ fn params_args(p: Params, args: Vec<Rc<SchemeVal>>) -> Result<Vec<(Id, Rc<Scheme
             for (prm, arg) in prms.iter().zip(args.iter()) {
                 ret.push((prm.clone(), arg.clone()));
             }
-            ret.push((id, SchemeVal::from_list(&args[n..], None)));
+            ret.push((id, V::from_list(&args[n..], None)));
             return Ok(ret);
         }
         None => {
@@ -326,10 +325,10 @@ fn params_args(p: Params, args: Vec<Rc<SchemeVal>>) -> Result<Vec<(Id, Rc<Scheme
 impl Const {
     fn eval(&self) -> EResult {
         Ok(match self {
-            Const::Bool(b) => Rc::new(SchemeVal::Bool(*b)),
-            Const::String(ref s) => Rc::new(SchemeVal::String(s.to_string())),
-            Const::Num(n) => Rc::new(SchemeVal::Num(*n)),
-            Const::Nil => Rc::new(SchemeVal::Nil),
+            Const::Bool(b) => V::new(SchemeVal::Bool(*b)),
+            Const::String(ref s) => V::new(SchemeVal::String(s.to_string())),
+            Const::Num(n) => V::new(SchemeVal::Num(*n)),
+            Const::Nil => V::new(SchemeVal::Nil),
         })
     }
 }
@@ -341,7 +340,7 @@ impl Id {
             .borrow()
             .find(self)
             .with_context(|| format!("could not find value {} \n", self.get()))?;
-        Ok(Rc::clone(&v))
+        Ok(v)
     }
 }
 impl SExp {
@@ -362,7 +361,7 @@ impl SExp {
                 for e in elems {
                     lst.push(e.eval(env)?);
                 }
-                Ok(SchemeVal::from_list(&lst[..], tailv))
+                Ok(V::from_list(&lst[..], tailv))
             }
         }
     }

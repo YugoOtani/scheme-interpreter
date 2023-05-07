@@ -1,8 +1,7 @@
-use anyhow::{bail, Result};
-use std::rc::Rc;
-
 use crate::token::SchemeVal as S;
-pub fn root_fn() -> Vec<(String, Rc<S>)> {
+use crate::{env::Env, token::V};
+use anyhow::{bail, Result};
+pub fn root_fn() -> Vec<(String, V)> {
     vec![
         sf("+", add),
         sf("-", sub),
@@ -27,61 +26,62 @@ pub fn root_fn() -> Vec<(String, Rc<S>)> {
         sf("append", append),
     ]
 }
-fn sf(s: &str, f: impl Fn(Vec<Rc<S>>) -> Result<Rc<S>> + 'static) -> (String, Rc<S>) {
-    (s.to_string(), Rc::new(S::RootFn(Box::new(f))))
+fn sf(s: &str, f: impl Fn(Vec<V>, &mut Env) -> Result<V> + 'static) -> (String, V) {
+    (s.to_string(), V::new(S::RootFn(Box::new(f))))
 }
-fn add(args: Vec<Rc<S>>) -> Result<Rc<S>> {
+
+fn add(args: Vec<V>, _: &mut Env) -> Result<V> {
     let mut ans = 0;
     for e in args {
-        match e.as_ref() {
+        match *e.get().borrow() {
             S::Num(n) => ans += n,
             _ => bail!("invalid argument"),
         }
     }
-    Ok(Rc::new(S::Num(ans)))
+    Ok(V::new(S::Num(ans)))
 }
-fn sub(args: Vec<Rc<S>>) -> Result<Rc<S>> {
+fn sub(args: Vec<V>, _: &mut Env) -> Result<V> {
     match &args[..] {
         [] => bail!("[-] number of argument is incorrect"),
-        [h, t @ ..] => match h.as_ref() {
+        [h, t @ ..] => match *h.get().borrow() {
             S::Num(i) => {
-                let mut ans = *i;
+                let mut ans = i;
                 for e in t {
-                    match e.as_ref() {
-                        S::Num(j) => ans -= *j,
+                    match *e.get().borrow() {
+                        S::Num(j) => ans -= j,
                         _ => bail!("[-] invalid argument"),
                     }
                 }
-                Ok(Rc::new(S::Num(ans)))
+                Ok(V::new(S::Num(ans)))
             }
             _ => bail!("[-] invalid argument"),
         },
     }
 }
-fn mul(args: Vec<Rc<S>>) -> Result<Rc<S>> {
+fn mul(args: Vec<V>, _: &mut Env) -> Result<V> {
     let mut ans = 1;
     for e in args {
-        match e.as_ref() {
+        match *e.get().borrow() {
             S::Num(n) => ans *= n,
             _ => bail!("[*] invalid argument"),
         }
     }
-    Ok(Rc::new(S::Num(ans)))
+    Ok(V::new(S::Num(ans)))
 }
 
-fn car(args: Vec<Rc<S>>) -> Result<Rc<S>> {
+fn car(args: Vec<V>, _: &mut Env) -> Result<V> {
     match &args[..] {
-        [h] => match h.as_ref() {
+        [h] => match &*h.get().borrow() {
             S::Pair(car, _) => Ok(car.clone()),
             _ => bail!("[car] can only be applied to pair"),
         },
         _ => bail!("number of argument is incorrect"),
     }
 }
-fn caar(args: Vec<Rc<S>>) -> Result<Rc<S>> {
+fn caar(args: Vec<V>, _: &mut Env) -> Result<V> {
     match &args[..] {
-        [h] => match h.as_ref() {
-            S::Pair(car, _) => match car.as_ref() {
+        [h] => match &*h.get().borrow() {
+            S::Pair(car, _) => match &*car.get().borrow() {
                 S::Pair(car, _) => Ok(car.clone()),
                 _ => bail!("[caar] can only be applied to pair"),
             },
@@ -90,10 +90,10 @@ fn caar(args: Vec<Rc<S>>) -> Result<Rc<S>> {
         _ => bail!("number of argument is incorrect"),
     }
 }
-fn cdar(args: Vec<Rc<S>>) -> Result<Rc<S>> {
+fn cdar(args: Vec<V>, _: &mut Env) -> Result<V> {
     match &args[..] {
-        [h] => match h.as_ref() {
-            S::Pair(car, _) => match car.as_ref() {
+        [h] => match &*h.get().borrow() {
+            S::Pair(car, _) => match &*car.get().borrow() {
                 S::Pair(_, cdr) => Ok(cdr.clone()),
                 _ => bail!("[caar] can only be applied to pair"),
             },
@@ -102,76 +102,76 @@ fn cdar(args: Vec<Rc<S>>) -> Result<Rc<S>> {
         _ => bail!("number of argument is incorrect"),
     }
 }
-fn cdr(args: Vec<Rc<S>>) -> Result<Rc<S>> {
+fn cdr(args: Vec<V>, _: &mut Env) -> Result<V> {
     match &args[..] {
-        [h] => match h.as_ref() {
+        [h] => match &*h.get().borrow() {
             S::Pair(_, cdr) => Ok(cdr.clone()),
             _ => bail!("[cdr] can only be applied to pair"),
         },
         _ => bail!("number of argument is incorrect"),
     }
 }
-fn is_null(args: Vec<Rc<S>>) -> Result<Rc<S>> {
+fn is_null(args: Vec<V>, _: &mut Env) -> Result<V> {
     match &args[..] {
-        [h] => match h.as_ref() {
-            S::Nil => Ok(Rc::new(S::Bool(true))),
-            _ => Ok(Rc::new(S::Bool(false))),
+        [h] => match *h.get().borrow() {
+            S::Nil => Ok(V::new(S::Bool(true))),
+            _ => Ok(V::new(S::Bool(false))),
         },
         _ => bail!("number of argument is incorrect"),
     }
 }
-fn is_pair(args: Vec<Rc<S>>) -> Result<Rc<S>> {
+fn is_pair(args: Vec<V>, _: &mut Env) -> Result<V> {
     match &args[..] {
-        [h] => match h.as_ref() {
-            S::Pair(_, _) => Ok(Rc::new(S::Bool(true))),
-            _ => Ok(Rc::new(S::Bool(false))),
+        [h] => match *h.get().borrow() {
+            S::Pair(_, _) => Ok(V::new(S::Bool(true))),
+            _ => Ok(V::new(S::Bool(false))),
         },
         _ => bail!("number of argument is incorrect"),
     }
 }
-fn is_sym(args: Vec<Rc<S>>) -> Result<Rc<S>> {
+fn is_sym(args: Vec<V>, _: &mut Env) -> Result<V> {
     match &args[..] {
-        [h] => match h.as_ref() {
-            S::Sym(_) => Ok(Rc::new(S::Bool(true))),
-            _ => Ok(Rc::new(S::Bool(false))),
+        [h] => match *h.get().borrow() {
+            S::Sym(_) => Ok(V::new(S::Bool(true))),
+            _ => Ok(V::new(S::Bool(false))),
         },
         _ => bail!("number of argument is incorrect"),
     }
 }
-fn is_list(args: Vec<Rc<S>>) -> Result<Rc<S>> {
+fn is_list(args: Vec<V>, _: &mut Env) -> Result<V> {
     match &args[..] {
-        [h] => Ok(Rc::new(S::Bool(h.as_ref().is_list()))),
+        [h] => Ok(V::new(S::Bool(h.is_list()))),
         _ => bail!("number of argument is incorrect"),
     }
 }
-fn length(args: Vec<Rc<S>>) -> Result<Rc<S>> {
+fn length(args: Vec<V>, _: &mut Env) -> Result<V> {
     match &args[..] {
-        [h] => match h.as_ref().to_list() {
+        [h] => match h.to_list() {
             (_, Some(_)) => bail!("[length] argument is not a list"),
-            (lst, None) => Ok(Rc::new(S::Num(lst.len() as i64))),
+            (lst, None) => Ok(V::new(S::Num(lst.len() as i64))),
         },
 
         _ => bail!("number of argument is incorrect"),
     }
 }
-fn memq(args: Vec<Rc<S>>) -> Result<Rc<S>> {
+fn memq(args: Vec<V>, _: &mut Env) -> Result<V> {
     match &args[..] {
         [x, l] => {
-            fn helper(a: &Rc<S>, lst: &Rc<S>) -> bool {
-                match lst.as_ref() {
+            fn helper(a: &V, lst: &V) -> bool {
+                match &*lst.get().borrow() {
                     S::Pair(car, cdr) => {
-                        if Rc::ptr_eq(a, car) {
+                        if V::ptr_eq(&a, &car) {
                             true
                         } else {
-                            helper(a, cdr)
+                            helper(a, &cdr)
                         }
                     }
                     S::Nil => false,
                     _ => panic!(),
                 }
             }
-            if l.as_ref().is_list() {
-                Ok(Rc::new(S::Bool(helper(x, l))))
+            if l.is_list() {
+                Ok(V::new(S::Bool(helper(x, l))))
             } else {
                 bail!("[memq] argument is not a list")
             }
@@ -180,21 +180,21 @@ fn memq(args: Vec<Rc<S>>) -> Result<Rc<S>> {
         _ => bail!("number of argument is incorrect"),
     }
 }
-fn list(args: Vec<Rc<S>>) -> Result<Rc<S>> {
-    fn helper(args: &[Rc<S>]) -> Rc<S> {
+fn list(args: Vec<V>, _: &mut Env) -> Result<V> {
+    fn helper(args: &[V]) -> V {
         match args.split_first() {
-            None => Rc::new(S::Nil),
-            Some((h, t)) => Rc::new(S::Pair(h.clone(), helper(t))),
+            None => V::new(S::Nil),
+            Some((h, t)) => V::new(S::Pair(h.clone(), helper(t))),
         }
     }
     Ok(helper(&args))
 }
-fn last(args: Vec<Rc<S>>) -> Result<Rc<S>> {
-    fn helper(lst: &Rc<S>) -> Rc<S> {
-        match lst.as_ref() {
-            S::Pair(car, cdr) => match cdr.as_ref() {
+fn last(args: Vec<V>, _: &mut Env) -> Result<V> {
+    fn helper(lst: &V) -> V {
+        match &*lst.get().borrow() {
+            S::Pair(car, cdr) => match *cdr.get().borrow() {
                 S::Nil => car.clone(),
-                S::Pair(_, _) => helper(cdr),
+                S::Pair(_, _) => helper(&cdr),
                 _ => panic!(),
             },
             _ => panic!(),
@@ -203,7 +203,7 @@ fn last(args: Vec<Rc<S>>) -> Result<Rc<S>> {
     match &args[..] {
         [h] => {
             if h.is_list() {
-                match h.as_ref() {
+                match *h.get().borrow() {
                     S::Nil => bail!("[last] list is empty"),
                     S::Pair(_, _) => Ok(helper(h)),
                     _ => panic!(),
@@ -215,11 +215,11 @@ fn last(args: Vec<Rc<S>>) -> Result<Rc<S>> {
         _ => bail!("number of argument is incorrect"),
     }
 }
-fn append(args: Vec<Rc<S>>) -> Result<Rc<S>> {
-    fn helper(x: &Rc<S>, y: &Rc<S>) -> Rc<S> {
-        match x.as_ref() {
+fn append(args: Vec<V>, _: &mut Env) -> Result<V> {
+    fn helper(x: &V, y: &V) -> V {
+        match &*x.get().borrow() {
             S::Nil => y.clone(),
-            S::Pair(car, cdr) => Rc::new(S::Pair(car.clone(), helper(cdr, y))),
+            S::Pair(car, cdr) => V::new(S::Pair(car.clone(), helper(&cdr, y))),
             _ => panic!(),
         }
     }
@@ -235,42 +235,42 @@ fn append(args: Vec<Rc<S>>) -> Result<Rc<S>> {
     }
 }
 
-fn math_eq(args: Vec<Rc<S>>) -> Result<Rc<S>> {
+fn math_eq(args: Vec<V>, _: &mut Env) -> Result<V> {
     match &args[..] {
-        [x, y] => match (x.as_ref(), y.as_ref()) {
-            (S::Num(ref x), S::Num(ref y)) => Ok(Rc::new(S::Bool(x == y))),
+        [x, y] => match (&*x.get().borrow(), &*y.get().borrow()) {
+            (S::Num(ref x), S::Num(ref y)) => Ok(V::new(S::Bool(x == y))),
             _ => bail!("[=] invalid argument"),
         },
         _ => bail!("number of argument is incorrect"),
     }
 }
-fn math_ls(args: Vec<Rc<S>>) -> Result<Rc<S>> {
+fn math_ls(args: Vec<V>, _: &mut Env) -> Result<V> {
     match &args[..] {
-        [x, y] => match (x.as_ref(), y.as_ref()) {
-            (S::Num(ref x), S::Num(ref y)) => Ok(Rc::new(S::Bool(x < y))),
+        [x, y] => match (&*x.get().borrow(), &*y.get().borrow()) {
+            (S::Num(ref x), S::Num(ref y)) => Ok(V::new(S::Bool(x < y))),
             _ => bail!("[<] invalid argument"),
         },
         _ => bail!("number of argument is incorrect"),
     }
 }
-fn math_gt(args: Vec<Rc<S>>) -> Result<Rc<S>> {
+fn math_gt(args: Vec<V>, _: &mut Env) -> Result<V> {
     match &args[..] {
-        [x, y] => match (x.as_ref(), y.as_ref()) {
-            (S::Num(ref x), S::Num(ref y)) => Ok(Rc::new(S::Bool(x > y))),
+        [x, y] => match (&*x.get().borrow(), &*y.get().borrow()) {
+            (S::Num(ref x), S::Num(ref y)) => Ok(V::new(S::Bool(x > y))),
             _ => bail!("[>] invalid argument"),
         },
         _ => bail!("number of argument is incorrect"),
     }
 }
-fn eq(args: Vec<Rc<S>>) -> Result<Rc<S>> {
+fn eq(args: Vec<V>, _: &mut Env) -> Result<V> {
     match &args[..] {
-        [x, y] => Ok(Rc::new(S::Bool(Rc::ptr_eq(x, y)))),
+        [x, y] => Ok(V::new(S::Bool(V::ptr_eq(x, y)))),
         _ => bail!("number of argument is incorrect"),
     }
 }
-fn cons(args: Vec<Rc<S>>) -> Result<Rc<S>> {
+fn cons(args: Vec<V>, _: &mut Env) -> Result<V> {
     match &args[..] {
-        [x, y] => Ok(Rc::new(S::Pair(x.clone(), y.clone()))),
+        [x, y] => Ok(V::new(S::Pair(x.clone(), y.clone()))),
         _ => bail!("number of argument is incorrect"),
     }
 }
