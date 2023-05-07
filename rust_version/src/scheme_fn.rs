@@ -24,12 +24,29 @@ pub fn root_fn() -> Vec<(String, V)> {
         sf("list", list),
         sf("last", last),
         sf("append", append),
+        sf("set-car!", set_car),
     ]
 }
 fn sf(s: &str, f: impl Fn(Vec<V>, &mut Env) -> Result<V> + 'static) -> (String, V) {
     (s.to_string(), V::new(S::RootFn(Box::new(f))))
 }
-
+fn set_car(args: Vec<V>, _: &mut Env) -> Result<V> {
+    match &args[..] {
+        [x, y] => {
+            let cdr = {
+                let rf = x.get();
+                let rf = rf.borrow();
+                match &*rf {
+                    S::Pair(_, cdr) => cdr.clone(),
+                    _ => bail!("[set-car] first argument must be a pair"),
+                }
+            };
+            *x.get().borrow_mut() = S::Pair(y.clone(), cdr);
+            Ok(V::none())
+        }
+        _ => bail!("[set-car] number of argument is incorrect"),
+    }
+}
 fn add(args: Vec<V>, _: &mut Env) -> Result<V> {
     let mut ans = 0;
     for e in args {

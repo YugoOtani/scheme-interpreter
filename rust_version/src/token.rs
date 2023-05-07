@@ -161,14 +161,17 @@ impl V {
     pub fn none() -> V {
         Self::new(SchemeVal::None)
     }
+    pub fn pair(car: &V, cdr: &V) -> V {
+        Self::new(SchemeVal::Pair(car.clone(), cdr.clone()))
+    }
     pub fn new(s: SchemeVal) -> V {
         V(Rc::new(RefCell::new(s)))
     }
     pub fn clone(&self) -> V {
-        V(self.0.clone())
+        V(self.get())
     }
     pub fn get(&self) -> Rc<RefCell<SchemeVal>> {
-        self.0.clone()
+        Rc::clone(&self.0)
     }
     pub fn to_list(&self) -> (Vec<V>, Option<V>) {
         fn helper(v: &V, mut acc: Vec<V>) -> (Vec<V>, Option<V>) {
