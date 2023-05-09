@@ -25,11 +25,65 @@ pub fn root_fn() -> Vec<(String, V)> {
         sf("last", last),
         sf("append", append),
         sf("set-car!", set_car),
+        sf("set-cdr!", set_cdr),
+        sf("boolean?", is_bool),
+        sf("procedure?", is_proc),
+        sf("string-append", string_append),
+        sf("symbol->string", sym_string),
+        sf("string->symbol", string_sym),
     ]
 }
 fn sf(s: &str, f: impl Fn(Vec<V>, &mut Env) -> Result<V> + 'static) -> (String, V) {
     (s.to_string(), V::new(S::RootFn(Box::new(f))))
 }
+fn string_sym(args: Vec<V>, env: &mut Env) -> Result<V> {
+    match &args[..] {
+        [x] => match *x.get().borrow() {
+            S::String(ref s) => env.add_sym_s(s),
+            _ => bail!("[string_sym] invalid argument"),
+        },
+        _ => bail!("[sym->string] number of argument is incorrect"),
+    }
+}
+fn sym_string(args: Vec<V>, _: &mut Env) -> Result<V> {
+    match &args[..] {
+        [x] => match *x.get().borrow() {
+            S::Sym(ref id) => Ok(V::string(id.get())),
+            _ => bail!("[sym->string] invalid argument"),
+        },
+        _ => bail!("[sym->string] number of argument is incorrect"),
+    }
+}
+fn string_append(args: Vec<V>, _: &mut Env) -> Result<V> {
+    let mut ret = String::new();
+    for arg in &args[..] {
+        match *arg.get().borrow() {
+            S::String(ref s) => ret.push_str(s),
+            _ => bail!("invalid argument"),
+        }
+    }
+    Ok(V::string(&ret))
+}
+fn is_bool(args: Vec<V>, _: &mut Env) -> Result<V> {
+    match &args[..] {
+        [x] => match *x.get().borrow() {
+            S::Bool(_) => Ok(V::bool(true)),
+            _ => Ok(V::bool(false)),
+        },
+        _ => bail!("[boolean?] number of argument is incorrect"),
+    }
+}
+fn is_proc(args: Vec<V>, _: &mut Env) -> Result<V> {
+    match &args[..] {
+        [x] => match *x.get().borrow() {
+            S::Closure(..) => Ok(V::bool(true)),
+            S::RootFn(_) => Ok(V::bool(true)),
+            _ => Ok(V::bool(false)),
+        },
+        _ => bail!("[boolean?] number of argument is incorrect"),
+    }
+}
+//fn string_append(args: Vec<V>, _: &mut Env) -> Result<V> {}
 fn set_car(args: Vec<V>, _: &mut Env) -> Result<V> {
     match &args[..] {
         [x, y] => {
@@ -42,6 +96,23 @@ fn set_car(args: Vec<V>, _: &mut Env) -> Result<V> {
                 }
             };
             *x.get().borrow_mut() = S::Pair(y.clone(), cdr);
+            Ok(V::none())
+        }
+        _ => bail!("[set-car] number of argument is incorrect"),
+    }
+}
+fn set_cdr(args: Vec<V>, _: &mut Env) -> Result<V> {
+    match &args[..] {
+        [x, y] => {
+            let car = {
+                let rf = x.get();
+                let rf = rf.borrow();
+                match &*rf {
+                    S::Pair(car, _) => car.clone(),
+                    _ => bail!("[set-cdr] first argument must be a pair"),
+                }
+            };
+            *x.get().borrow_mut() = S::Pair(car, y.clone());
             Ok(V::none())
         }
         _ => bail!("[set-car] number of argument is incorrect"),

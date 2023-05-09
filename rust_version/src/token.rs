@@ -149,8 +149,8 @@ impl V {
     pub fn bool(b: bool) -> V {
         Self::new(SchemeVal::Bool(b))
     }
-    pub fn string(s: String) -> V {
-        Self::new(SchemeVal::String(s))
+    pub fn string(s: &str) -> V {
+        Self::new(SchemeVal::String(s.to_string()))
     }
     pub fn nil() -> V {
         Self::new(SchemeVal::Nil)
@@ -202,7 +202,6 @@ impl V {
             SchemeVal::Pair(_, _) => {
                 // (a (b (c d))) => (a b c . d)
                 let (lst, tail) = self.to_list();
-                assert!(!lst.is_empty());
                 let mut ret = String::from("(");
                 ret.push_str(&lst[0].to_string());
                 for e in &lst[1..] {
