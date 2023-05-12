@@ -1,6 +1,6 @@
 use crate::token::SchemeVal as S;
 use crate::{env::Env, token::V};
-use anyhow::{bail, Result};
+use anyhow::{bail, Context, Result};
 pub fn root_fn() -> Vec<(String, V)> {
     vec![
         sf("+", add),
@@ -31,27 +31,130 @@ pub fn root_fn() -> Vec<(String, V)> {
         sf("string-append", string_append),
         sf("symbol->string", sym_string),
         sf("string->symbol", string_sym),
+        sf("string->number", string_num),
+        sf("number->string", num_string),
+        sf("not", not),
+        sf("number?", is_number),
+        sf("neq?", neq),
+        sf("equal?", equal),
     ]
 }
 fn sf(s: &str, f: impl Fn(Vec<V>, &mut Env) -> Result<V> + 'static) -> (String, V) {
     (s.to_string(), V::new(S::RootFn(Box::new(f))))
 }
+fn neq(args: Vec<V>, _: &mut Env) -> Result<V> {
+    match &args[..] {
+        [x, y] => Ok(V::bool(!V::ptr_eq(x, y))),
+        _ => bail!("number of argument is incorrect"),
+    }
+}
+fn equal(args: Vec<V>, _: &mut Env) -> Result<V> {
+    fn helper(s1: &V, s2: &V) -> bool {
+        match &*s1.get().borrow() {
+            S::Bool(b1) => {
+                if let S::Bool(b2) = &*s2.get().borrow() {
+                    b1 == b2
+                } else {
+                    false
+                }
+            }
+            S::Num(n1) => {
+                if let S::Num(n2) = &*s2.get().borrow() {
+                    n1 == n2
+                } else {
+                    false
+                }
+            }
+            S::Nil => matches!(&*s2.get().borrow(), S::Nil),
+            S::None => matches!(&*s2.get().borrow(), S::None),
+            S::Pair(car1, cdr1) => {
+                if let S::Pair(car2, cdr2) = &*s2.get().borrow() {
+                    helper(car1, car2) && helper(cdr1, cdr2)
+                } else {
+                    false
+                }
+            }
+            S::Sym(id1) => {
+                if let S::Sym(id2) = &*s2.get().borrow() {
+                    let valeq = id1.get() == id2.get();
+                    let refeq = V::ptr_eq(s1, s2);
+                    assert!(valeq == refeq);
+                    valeq
+                } else {
+                    false
+                }
+            }
+            S::String(s1) => {
+                if let S::String(s2) = &*s2.get().borrow() {
+                    s1 == s2
+                } else {
+                    false
+                }
+            }
+            S::Closure(..) => V::ptr_eq(s1, s2),
+            S::RootFn(..) => V::ptr_eq(s1, s2),
+        }
+    }
+    match &args[..] {
+        [x, y] => Ok(V::bool(helper(x, y))),
+        _ => bail!("number of argument is incorrect"),
+    }
+}
+fn string_num(args: Vec<V>, _: &mut Env) -> Result<V> {
+    match &args[..] {
+        [x] => match *x.get().borrow() {
+            S::String(ref s) => {
+                let n = s.parse::<i64>().context("[string->number] parse fail")?;
+                Ok(V::num(n))
+            }
+            _ => bail!("[string->number] invalid argument"),
+        },
+        _ => bail!("[string->number] number of argument is incorrect"),
+    }
+}
+fn not(args: Vec<V>, _: &mut Env) -> Result<V> {
+    match &args[..] {
+        [x] => match *x.get().borrow() {
+            S::Bool(b) => Ok(V::bool(!b)),
+            _ => bail!("[not] invalid argument"),
+        },
+        _ => bail!("[not] number of argument is incorrect"),
+    }
+}
+fn is_number(args: Vec<V>, _: &mut Env) -> Result<V> {
+    match &args[..] {
+        [x] => match *x.get().borrow() {
+            S::Num(_) => Ok(V::bool(true)),
+            _ => Ok(V::bool(false)),
+        },
+        _ => bail!("[not] number of argument is incorrect"),
+    }
+}
+fn num_string(args: Vec<V>, _: &mut Env) -> Result<V> {
+    match &args[..] {
+        [x] => match *x.get().borrow() {
+            S::Num(ref n) => Ok(V::string(&n.to_string())),
+            _ => bail!("[number->string] invalid argument"),
+        },
+        _ => bail!("[number->string] number of argument is incorrect"),
+    }
+}
 fn string_sym(args: Vec<V>, env: &mut Env) -> Result<V> {
     match &args[..] {
         [x] => match *x.get().borrow() {
             S::String(ref s) => env.add_sym_s(s),
-            _ => bail!("[string_sym] invalid argument"),
+            _ => bail!("[string->symbol] invalid argument"),
         },
-        _ => bail!("[sym->string] number of argument is incorrect"),
+        _ => bail!("[string->symbol] number of argument is incorrect"),
     }
 }
 fn sym_string(args: Vec<V>, _: &mut Env) -> Result<V> {
     match &args[..] {
         [x] => match *x.get().borrow() {
             S::Sym(ref id) => Ok(V::string(id.get())),
-            _ => bail!("[sym->string] invalid argument"),
+            _ => bail!("[symbol->string] invalid argument"),
         },
-        _ => bail!("[sym->string] number of argument is incorrect"),
+        _ => bail!("[symbol->string] number of argument is incorrect"),
     }
 }
 fn string_append(args: Vec<V>, _: &mut Env) -> Result<V> {

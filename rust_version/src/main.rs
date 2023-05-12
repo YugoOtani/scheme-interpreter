@@ -9,16 +9,17 @@ use crate::parser::parse_tkns;
 use crate::token::Toplevel;
 use anyhow::anyhow;
 use anyhow::Result;
-use dbg_token::*;
 use parser::parse_token;
 use std::fs::File;
 use std::io::Read;
 use std::io::{stdin, stdout, Write};
+use std::time::Instant;
 const CONSOLE: &str = "mini-scheme > ";
 fn main() {
     let mut env = Env::new();
-
+    exec_load("input".to_string(), &mut env).unwrap();
     for _ in 0.. {
+        stdout().flush().unwrap();
         print!("{CONSOLE}");
         stdout().flush().unwrap();
         let mut input = String::new();
@@ -43,19 +44,36 @@ fn main() {
         }
         match parse_token(&input) {
             Err(e) => println!("{e}"),
-            Ok(Toplevel::Load(fname)) => match exec_load(fname, &mut env) {
-                Ok(msg) => println!("{msg}"),
-                Err(msg) => println!("{msg}"),
-            },
-            Ok(s) => match s.eval(&mut env) {
-                Ok(res) => {
-                    println!("{}", res.to_string())
+            Ok(Toplevel::Load(fname)) => {
+                match exec_load(fname, &mut env) {
+                    Ok(msg) => println!("{msg}"),
+                    Err(msg) => println!("{msg}"),
+                };
+            }
+            Ok(s) => {
+                let start = Instant::now();
+                //let guard = pprof::ProfilerGuard::new(1000).unwrap();
+                let res = s.eval(&mut env);
+                /*if let Ok(report) = guard.report().build() {
+                    let file = File::create("flamegraph.svg").unwrap();
+                    report.flamegraph(file).unwrap();
+                };*/
+                let end = Instant::now();
+
+                match res {
+                    Ok(res) => {
+                        println!("{}", res.to_string());
+                        println!(
+                            "execution time : {}ms",
+                            end.duration_since(start).as_millis()
+                        );
+                    }
+                    Err(msg) => {
+                        println!("{}", msg);
+                        //s.tdbg(0);
+                    }
                 }
-                Err(msg) => {
-                    println!("{}", msg);
-                    s.tdbg(0);
-                }
-            },
+            }
         }
     }
 }

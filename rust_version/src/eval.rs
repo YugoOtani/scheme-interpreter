@@ -11,6 +11,7 @@ impl Toplevel {
         }
     }
 }
+
 impl Define {
     fn eval(&self, env: &mut Env) -> EResult {
         match self {
@@ -31,12 +32,13 @@ impl Exp {
     fn eval(&self, env: &mut Env) -> EResult {
         let mut exp = self.clone();
         let initial_frame = env.get_frame();
-        loop {
+        let r = loop {
             // loop for tail recursion
             match exp {
                 Exp::Const(c) => {
                     env.set_frame(initial_frame);
-                    break c.eval();
+                    let v = c.eval();
+                    break v;
                 }
                 Exp::Id(id) => {
                     let v = id.eval(env);
@@ -50,19 +52,18 @@ impl Exp {
                         let v = e.eval(env)?;
                         args_v.push(v);
                     }
-                    let f = func.clone();
-                    match &*f.get().borrow() {
+                    match &*func.get().borrow() {
                         SchemeVal::RootFn(f) => {
                             env.set_frame(initial_frame);
                             break f(args_v, env);
                         }
                         SchemeVal::Closure(parframe, params, Body { defs, exps, ret }) => {
-                            let p_a = params_args(params.clone(), args_v)?;
+                            let p_a = params_args(params, &args_v)?;
                             let eval_frame = Frame::empty(&parframe);
-                            for (id, val) in &p_a {
+                            for (id, val) in p_a {
                                 eval_frame
                                     .borrow_mut()
-                                    .insert_new(id, val)
+                                    .insert_new(id, &val)
                                     .context("cannot use the same parameter in function")?;
                             }
 
@@ -121,7 +122,7 @@ impl Exp {
                         env.get_frame()
                             .borrow_mut()
                             .insert_new(&name, &V::new(closure))
-                            .context("[named-let] name {} is already used as binding parameter")?;
+                            .context("[named-let] name is already used as binding parameter")?;
                     }
                     let Body { defs, exps, ret } = body;
                     for def in defs {
@@ -282,7 +283,9 @@ impl Exp {
                     exp = last.clone();
                 }
             }
-        }
+        };
+        //println!("{:?}", Instant::now().duration_since(start));
+        r
     }
 }
 
@@ -298,7 +301,7 @@ fn let2_env(binds: &[Bind], env: &mut Env) -> Result<()> {
         }
     }
 }
-fn params_args(p: Params, args: Vec<V>) -> Result<Vec<(Id, V)>> {
+fn params_args<'a>(p: &'a Params, args: &'a Vec<V>) -> Result<Vec<(&'a Id, V)>> {
     let Params { prms, other } = p;
     ensure!(prms.len() <= args.len(), "number of argument is incorrect");
     match other {
@@ -306,7 +309,7 @@ fn params_args(p: Params, args: Vec<V>) -> Result<Vec<(Id, V)>> {
             let mut ret = vec![];
             let n = args.len();
             for (prm, arg) in prms.iter().zip(args.iter()) {
-                ret.push((prm.clone(), arg.clone()));
+                ret.push((prm, arg.clone()));
             }
             ret.push((id, V::from_list(&args[n..], None)));
             return Ok(ret);
@@ -315,7 +318,7 @@ fn params_args(p: Params, args: Vec<V>) -> Result<Vec<(Id, V)>> {
             ensure!(prms.len() == args.len(), "number of argument is incorrect");
             let mut ret = vec![];
             for (prm, arg) in prms.iter().zip(args.iter()) {
-                ret.push((prm.clone(), arg.clone()));
+                ret.push((prm, arg.clone()));
             }
             return Ok(ret);
         }
