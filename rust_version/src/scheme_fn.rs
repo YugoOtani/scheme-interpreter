@@ -6,6 +6,7 @@ pub fn root_fn() -> Vec<(String, V)> {
         sf("+", add),
         sf("-", sub),
         sf("*", mul),
+        sf("/", div),
         sf("car", car),
         sf("cdr", cdr),
         sf("null?", is_null),
@@ -15,6 +16,8 @@ pub fn root_fn() -> Vec<(String, V)> {
         sf("eq?", eq),
         sf("<", math_ls),
         sf(">", math_gt),
+        sf("<=", math_leq),
+        sf(">=", math_gteq),
         sf("cons", cons),
         sf("length", length),
         sf("memq", memq),
@@ -259,6 +262,25 @@ fn mul(args: Vec<V>, _: &mut Env) -> Result<V> {
     }
     Ok(V::new(S::Num(ans)))
 }
+fn div(args: Vec<V>, _: &mut Env) -> Result<V> {
+    match &args[..] {
+        [] => bail!("[/] number of argument is incorrect"),
+        [h, t @ ..] => match *h.get().borrow() {
+            S::Num(i) => {
+                let mut ans = i;
+                for e in t {
+                    match *e.get().borrow() {
+                        S::Num(0) => bail!("[/] division by zero"),
+                        S::Num(i) => ans /= i,
+                        _ => bail!("[/] invalid argument"),
+                    }
+                }
+                Ok(V::new(S::Num(ans)))
+            }
+            _ => bail!("[/] invalid argument"),
+        },
+    }
+}
 
 fn car(args: Vec<V>, _: &mut Env) -> Result<V> {
     match &args[..] {
@@ -448,6 +470,24 @@ fn math_gt(args: Vec<V>, _: &mut Env) -> Result<V> {
     match &args[..] {
         [x, y] => match (&*x.get().borrow(), &*y.get().borrow()) {
             (S::Num(ref x), S::Num(ref y)) => Ok(V::new(S::Bool(x > y))),
+            _ => bail!("[>] invalid argument"),
+        },
+        _ => bail!("number of argument is incorrect"),
+    }
+}
+fn math_leq(args: Vec<V>, _: &mut Env) -> Result<V> {
+    match &args[..] {
+        [x, y] => match (&*x.get().borrow(), &*y.get().borrow()) {
+            (S::Num(ref x), S::Num(ref y)) => Ok(V::new(S::Bool(x <= y))),
+            _ => bail!("[<] invalid argument"),
+        },
+        _ => bail!("number of argument is incorrect"),
+    }
+}
+fn math_gteq(args: Vec<V>, _: &mut Env) -> Result<V> {
+    match &args[..] {
+        [x, y] => match (&*x.get().borrow(), &*y.get().borrow()) {
+            (S::Num(ref x), S::Num(ref y)) => Ok(V::new(S::Bool(x >= y))),
             _ => bail!("[>] invalid argument"),
         },
         _ => bail!("number of argument is incorrect"),
