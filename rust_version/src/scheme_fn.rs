@@ -322,6 +322,7 @@ fn car(args: Vec<V>, _: &mut Env) -> Result<V> {
         _ => bail!("number of argument is incorrect"),
     }
 }
+// not yet implemented S::Lazy
 fn caar(args: Vec<V>, _: &mut Env) -> Result<V> {
     match &args[..] {
         [h] => match &*h.get().borrow() {

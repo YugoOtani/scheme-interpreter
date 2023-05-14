@@ -136,7 +136,7 @@ pub enum SchemeVal {
     RootFn(Func),
     Closure(Rc<RefCell<Frame>>, Params, Body),
     Macro(Params, Exp),
-    Lazy(SExp),
+    Lazy(SExp), // TODO: rename
     None,
 }
 pub struct V(Rc<RefCell<SchemeVal>>);
