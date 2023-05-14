@@ -4,6 +4,8 @@ pub mod eval;
 pub mod parser;
 pub mod scheme_fn;
 pub mod token;
+pub mod tosexp;
+use crate::dbg_token::TDbg;
 use crate::env::Env;
 use crate::parser::parse_tkns;
 use crate::token::Toplevel;
@@ -51,6 +53,7 @@ fn main() {
                 };
             }
             Ok(s) => {
+                //s.tdbg(0);
                 let start = Instant::now();
                 //let guard = pprof::ProfilerGuard::new(1000).unwrap();
                 let res = s.eval(&mut env);
@@ -70,7 +73,6 @@ fn main() {
                     }
                     Err(msg) => {
                         println!("{}", msg);
-                        //s.tdbg(0);
                     }
                 }
             }

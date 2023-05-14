@@ -48,6 +48,8 @@ pub enum Exp {
     And(Vec<Exp>),
     Or(Vec<Exp>),
     Begin(Vec<Exp>),
+    DefMacro(Id, Params, Box<Exp>),
+    ExpandMacro(Id, Vec<SExp>),
 }
 #[derive(Debug, Clone)]
 pub struct Branch {
@@ -133,6 +135,8 @@ pub enum SchemeVal {
     Pair(V, V),
     RootFn(Func),
     Closure(Rc<RefCell<Frame>>, Params, Body),
+    Macro(Params, Exp),
+    Lazy(SExp),
     None,
 }
 pub struct V(Rc<RefCell<SchemeVal>>);
@@ -181,6 +185,7 @@ impl V {
                     helper(&t, acc)
                 }
                 SchemeVal::Nil => (acc, None),
+                SchemeVal::Lazy(sexp) => helper(&sexp.to_v(), acc),
                 _ => (acc, Some(v.clone())),
             }
         }
@@ -215,6 +220,8 @@ impl V {
                 ret
             }
             SchemeVal::RootFn(_) | SchemeVal::Closure(_, _, _) => "#<procedure>".to_string(),
+            SchemeVal::Macro(_, _) => "#<macro>".to_string(),
+            SchemeVal::Lazy(sexp) => sexp.to_v().to_string(),
             SchemeVal::None => "(none)".to_string(),
         }
     }
@@ -236,6 +243,14 @@ impl V {
                 _ => t.is_list(),
             },
             SchemeVal::Nil => true,
+            SchemeVal::Lazy(ref sexp) => match &*sexp.to_v().get().borrow() {
+                SchemeVal::Pair(_, cdr) => match *cdr.0.clone().borrow() {
+                    SchemeVal::Nil => true,
+                    _ => cdr.is_list(),
+                },
+                SchemeVal::Nil => true,
+                _ => unreachable!(),
+            },
             _ => false,
         }
     }

@@ -3,6 +3,7 @@ use crate::{env::Env, token::V};
 use anyhow::{bail, Context, Result};
 pub fn root_fn() -> Vec<(String, V)> {
     vec![
+        sf("display", display),
         sf("+", add),
         sf("-", sub),
         sf("*", mul),
@@ -44,6 +45,12 @@ pub fn root_fn() -> Vec<(String, V)> {
 }
 fn sf(s: &str, f: impl Fn(Vec<V>, &mut Env) -> Result<V> + 'static) -> (String, V) {
     (s.to_string(), V::new(S::RootFn(Box::new(f))))
+}
+fn display(args: Vec<V>, _: &mut Env) -> Result<V> {
+    for arg in args {
+        print!("{}", arg.to_string())
+    }
+    Ok(V::none())
 }
 fn neq(args: Vec<V>, _: &mut Env) -> Result<V> {
     match &args[..] {
@@ -94,8 +101,12 @@ fn equal(args: Vec<V>, _: &mut Env) -> Result<V> {
                     false
                 }
             }
+            S::Lazy(_) => {
+                panic!()
+            }
             S::Closure(..) => V::ptr_eq(s1, s2),
             S::RootFn(..) => V::ptr_eq(s1, s2),
+            S::Macro(..) => panic!("macro was returned"),
         }
     }
     match &args[..] {
@@ -198,6 +209,11 @@ fn set_car(args: Vec<V>, _: &mut Env) -> Result<V> {
                 let rf = rf.borrow();
                 match &*rf {
                     S::Pair(_, cdr) => cdr.clone(),
+                    S::Lazy(sexp) => match &*sexp.to_v().get().borrow() {
+                        S::Pair(_, cdr) => cdr.clone(),
+                        S::Nil => bail!("[set-car] cannot apply to nil"),
+                        _ => unreachable!(),
+                    },
                     _ => bail!("[set-car] first argument must be a pair"),
                 }
             };
@@ -215,6 +231,11 @@ fn set_cdr(args: Vec<V>, _: &mut Env) -> Result<V> {
                 let rf = rf.borrow();
                 match &*rf {
                     S::Pair(car, _) => car.clone(),
+                    S::Lazy(sexp) => match &*sexp.to_v().get().borrow() {
+                        S::Pair(car, _) => car.clone(),
+                        S::Nil => bail!("[set-cdr] cannot apply to nil"),
+                        _ => unreachable!(),
+                    },
                     _ => bail!("[set-cdr] first argument must be a pair"),
                 }
             };
@@ -286,7 +307,15 @@ fn car(args: Vec<V>, _: &mut Env) -> Result<V> {
     match &args[..] {
         [h] => match &*h.get().borrow() {
             S::Pair(car, _) => Ok(car.clone()),
-            _ => bail!("[car] can only be applied to pair"),
+            S::Lazy(sexp) => match &*sexp.to_v().get().borrow() {
+                S::Pair(car, _) => Ok(car.clone()),
+                S::Nil => bail!("[car] cannot apply to nil"),
+                _ => unreachable!(),
+            },
+            _ => bail!(
+                "[car] can only be applied to pair : given {}",
+                h.to_string()
+            ),
         },
         _ => bail!("number of argument is incorrect"),
     }
@@ -319,6 +348,11 @@ fn cdr(args: Vec<V>, _: &mut Env) -> Result<V> {
     match &args[..] {
         [h] => match &*h.get().borrow() {
             S::Pair(_, cdr) => Ok(cdr.clone()),
+            S::Lazy(sexp) => match &*sexp.to_v().get().borrow() {
+                S::Pair(_, cdr) => Ok(cdr.clone()),
+                S::Nil => bail!("[cdsr] cannot apply to nil"),
+                _ => unreachable!(),
+            },
             _ => bail!("[cdr] can only be applied to pair"),
         },
         _ => bail!("number of argument is incorrect"),
@@ -328,6 +362,11 @@ fn is_null(args: Vec<V>, _: &mut Env) -> Result<V> {
     match &args[..] {
         [h] => match *h.get().borrow() {
             S::Nil => Ok(V::new(S::Bool(true))),
+            S::Lazy(ref sexp) => match &*sexp.to_v().get().borrow() {
+                S::Pair(..) => Ok(V::bool(false)),
+                S::Nil => Ok(V::bool(true)),
+                _ => unreachable!(),
+            },
             _ => Ok(V::new(S::Bool(false))),
         },
         _ => bail!("number of argument is incorrect"),
@@ -337,6 +376,11 @@ fn is_pair(args: Vec<V>, _: &mut Env) -> Result<V> {
     match &args[..] {
         [h] => match *h.get().borrow() {
             S::Pair(_, _) => Ok(V::new(S::Bool(true))),
+            S::Lazy(ref sexp) => match &*sexp.to_v().get().borrow() {
+                S::Pair(..) => Ok(V::bool(true)),
+                S::Nil => Ok(V::bool(false)),
+                _ => unreachable!(),
+            },
             _ => Ok(V::new(S::Bool(false))),
         },
         _ => bail!("number of argument is incorrect"),
@@ -380,6 +424,7 @@ fn memq(args: Vec<V>, _: &mut Env) -> Result<V> {
                         }
                     }
                     S::Nil => false,
+                    S::Lazy(..) => V::ptr_eq(a, lst),
                     _ => panic!(),
                 }
             }
@@ -419,6 +464,10 @@ fn last(args: Vec<V>, _: &mut Env) -> Result<V> {
                 match *h.get().borrow() {
                     S::Nil => bail!("[last] list is empty"),
                     S::Pair(_, _) => Ok(helper(h)),
+                    S::Lazy(ref sexp) => match &*sexp.to_v().get().borrow() {
+                        S::Nil => bail!("[last] list is empty"),
+                        _ => Ok(helper(&sexp.to_v())),
+                    },
                     _ => panic!(),
                 }
             } else {
@@ -433,6 +482,7 @@ fn append(args: Vec<V>, _: &mut Env) -> Result<V> {
         match &*x.get().borrow() {
             S::Nil => y.clone(),
             S::Pair(car, cdr) => V::new(S::Pair(car.clone(), helper(&cdr, y))),
+            S::Lazy(sexp) => helper(&sexp.to_v(), y),
             _ => panic!(),
         }
     }

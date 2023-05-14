@@ -11,9 +11,7 @@ use nom::*;
 fn exp_test() {
     println!(
         "{:?}",
-        in_bracket(parse_letrec)(
-            "(letrec ((sum (lambda (x) (if (null? x) 0 (+ (car x) (sum (cdr x))))))) (sum '(1 2 3 4 5)))"
-        )
+        in_bracket(parse_defmacro)("(macro (lets vars . body) (let*-expander vars body))")
     );
 }
 pub fn parse_tkns(s: &str) -> Result<Vec<Toplevel>> {
@@ -180,6 +178,21 @@ fn parse_top(s: &str) -> IResult<&str, Toplevel> {
     }
     map(parse_exp, Toplevel::Exp)(s)
 }
+fn parse_defmacro(s: &str) -> IResult<&str, Exp> {
+    let (s, _) = tag("macro")(s)?;
+    let (s, _) = end_token(s)?;
+    let (s, _) = char('(')(s)?;
+    let (s, _) = multispace0(s)?;
+    let (s, id) = parse_id(s)?;
+    let (s, _) = multispace0(s)?;
+    let (s, param) = parse_argfn(s)?;
+    let (s, _) = multispace0(s)?;
+    let (s, _) = char(')')(s)?;
+    let (s, _) = multispace0(s)?;
+    let (s, sexp) = parse_exp(s)?;
+    Ok((s, Exp::DefMacro(id, param, Box::new(sexp))))
+}
+
 fn parse_load(s: &str) -> IResult<&str, String> {
     let (s, _) = tag("load")(s)?;
     let (s, _) = multispace1(s)?;
@@ -291,7 +304,12 @@ fn parse_body(s: &str) -> IResult<&str, Body> {
     let ret = Box::new(exps.pop().unwrap());
     Ok((s, Body { defs, exps, ret }))
 }
-
+fn parse_expand_macro(s: &str) -> IResult<&str, Exp> {
+    let (s, id) = parse_id(s)?;
+    let (s, _) = end_token(s)?;
+    let (s, args) = separated_list0(end_token, parse_sexp)(s)?;
+    Ok((s, Exp::ExpandMacro(id, args)))
+}
 fn parse_exp(s: &str) -> IResult<&str, Exp> {
     if let Ok((s, res)) = map(parse_const, Exp::Const)(s) {
         return Ok((s, res));
@@ -299,6 +317,10 @@ fn parse_exp(s: &str) -> IResult<&str, Exp> {
     if let Ok((s, res)) = map(parse_id, Exp::Id)(s) {
         return Ok((s, res));
     }
+    if let Ok((s, res)) = in_bracket(parse_defmacro)(s) {
+        return Ok((s, res));
+    }
+
     if let Ok((s, res)) = parse_quote(s) {
         return Ok((s, res));
     }
@@ -332,7 +354,10 @@ fn parse_exp(s: &str) -> IResult<&str, Exp> {
     if let Ok((s, res)) = in_bracket(parse_begin)(s) {
         return Ok((s, res));
     }
-    in_bracket(parse_fncall)(s)
+    if let Ok((s, res)) = in_bracket(parse_fncall)(s) {
+        return Ok((s, res));
+    }
+    in_bracket(parse_expand_macro)(s)
 }
 fn parse_lambda(s: &str) -> IResult<&str, Exp> {
     let (s, _) = tag("lambda")(s)?;

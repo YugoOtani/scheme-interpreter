@@ -74,6 +74,12 @@ impl TDbg for Exp {
                 Self::pln(n, "Exp(Or)");
                 v.tdbg(n + 1);
             }
+            Exp::DefMacro(id, prms, body) => {
+                Self::pln(n, "Exp(DefMacro)");
+                id.tdbg(n + 1);
+                prms.tdbg(n + 1);
+                body.tdbg(n + 1);
+            }
             Exp::Cond {
                 branches,
                 else_branch,
@@ -146,6 +152,11 @@ impl TDbg for Exp {
                         v.tdbg(n + 1)
                     }
                 }
+            }
+            Exp::ExpandMacro(id, exp) => {
+                Self::pln(n, "Exp(Macro)");
+                id.tdbg(n + 1);
+                exp.tdbg(n + 1);
             }
         }
     }
