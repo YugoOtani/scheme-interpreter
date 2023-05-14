@@ -3,7 +3,7 @@ use crate::{env::Env, token::V};
 use anyhow::{bail, Context, Result};
 pub fn root_fn() -> Vec<(String, V)> {
     vec![
-        sf("display", display),
+        sf("print", print),
         sf("+", add),
         sf("-", sub),
         sf("*", mul),
@@ -46,10 +46,12 @@ pub fn root_fn() -> Vec<(String, V)> {
 fn sf(s: &str, f: impl Fn(Vec<V>, &mut Env) -> Result<V> + 'static) -> (String, V) {
     (s.to_string(), V::new(S::RootFn(Box::new(f))))
 }
-fn display(args: Vec<V>, _: &mut Env) -> Result<V> {
+fn print(args: Vec<V>, _: &mut Env) -> Result<V> {
+    let mut s = String::new();
     for arg in args {
-        print!("{}", arg.to_string())
+        s.push_str(&arg.to_string())
     }
+    println!("{}", s);
     Ok(V::none())
 }
 fn neq(args: Vec<V>, _: &mut Env) -> Result<V> {
