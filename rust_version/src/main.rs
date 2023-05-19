@@ -1,6 +1,7 @@
 pub mod dbg_token;
 pub mod env;
 pub mod eval;
+pub mod gc;
 pub mod parser;
 pub mod scheme_fn;
 pub mod token;
