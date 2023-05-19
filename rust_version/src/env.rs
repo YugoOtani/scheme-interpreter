@@ -1,6 +1,6 @@
-use crate::gc::V;
 use crate::scheme_fn::root_fn;
 use crate::token::Id;
+use crate::token::V;
 use anyhow::Context;
 use anyhow::Result;
 use std::cell::*;

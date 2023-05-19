@@ -1,4 +1,3 @@
-use crate::gc::V;
 use crate::{env::*, parser::parse_token, token::*, tosexp::ToSExp};
 use anyhow::{bail, ensure, Context, Result};
 type EResult = Result<V>;
