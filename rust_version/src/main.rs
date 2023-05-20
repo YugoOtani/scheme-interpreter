@@ -20,7 +20,7 @@ use std::time::Instant;
 const CONSOLE: &str = "mini-scheme > ";
 fn main() {
     let mut env = Env::new();
-    exec_load("input".to_string(), &mut env).unwrap();
+    //exec_load("input".to_string(), &mut env).unwrap();
     for _ in 0.. {
         stdout().flush().unwrap();
         print!("{CONSOLE}");
@@ -56,12 +56,7 @@ fn main() {
             Ok(s) => {
                 //s.tdbg(0);
                 let start = Instant::now();
-                //let guard = pprof::ProfilerGuard::new(1000).unwrap();
                 let res = s.eval(&mut env);
-                /*if let Ok(report) = guard.report().build() {
-                    let file = File::create("flamegraph.svg").unwrap();
-                    report.flamegraph(file).unwrap();
-                };*/
                 let end = Instant::now();
 
                 match res {

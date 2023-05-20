@@ -140,7 +140,7 @@ pub enum SchemeVal {
     Lazy(SExp), // TODO: rename
     None,
 }
-type Func = Box<dyn Fn(Vec<V>, &mut Env) -> Result<V>>;
+pub type Func = Box<dyn Fn(Vec<V>, &mut Env) -> Result<V>>;
 /*pub struct V(Rc<RefCell<SchemeVal>>);
 
 

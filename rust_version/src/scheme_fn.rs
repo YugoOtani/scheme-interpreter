@@ -2,7 +2,7 @@ use crate::gc::V;
 use crate::token::SchemeVal as S;
 use crate::{env::Env, gc::*};
 use anyhow::{bail, Context, Result};
-pub fn root_fn() -> Vec<(String, V)> {
+pub fn root_fn_list() -> Vec<(String, V)> {
     vec![
         sf("print", print),
         sf("+", add),
@@ -45,16 +45,17 @@ pub fn root_fn() -> Vec<(String, V)> {
     ]
 }
 fn sf(s: &str, f: impl Fn(Vec<V>, &mut Env) -> Result<V> + 'static) -> (String, V) {
-    (s.to_string(), V::new(S::RootFn(Box::new(f))))
+    (s.to_string(), root_fn(Box::new(f)))
 }
 fn print(args: Vec<V>, _: &mut Env) -> Result<V> {
     let mut s = String::new();
-    for arg in args {
-        s.push_str(&arg.to_string())
+    for arg in &args {
+        s.push_str(&arg.to_string());
     }
     println!("{}", s);
     Ok(none())
 }
+
 fn neq(args: Vec<V>, _: &mut Env) -> Result<V> {
     match &args[..] {
         [x, y] => Ok(bool(!V::ptr_eq(x, y))),
@@ -248,13 +249,14 @@ fn set_cdr(args: Vec<V>, _: &mut Env) -> Result<V> {
 }
 fn add(args: Vec<V>, _: &mut Env) -> Result<V> {
     let mut ans = 0;
-    for e in args {
+    for e in &args {
         match *e.get() {
             S::Num(n) => ans += n,
             _ => bail!("invalid argument"),
         }
     }
-    Ok(V::new(S::Num(ans)))
+
+    Ok(num(ans))
 }
 fn sub(args: Vec<V>, _: &mut Env) -> Result<V> {
     match &args[..] {
@@ -268,7 +270,7 @@ fn sub(args: Vec<V>, _: &mut Env) -> Result<V> {
                         _ => bail!("[-] invalid argument"),
                     }
                 }
-                Ok(V::new(S::Num(ans)))
+                Ok(num(ans))
             }
             _ => bail!("[-] invalid argument"),
         },
@@ -282,7 +284,7 @@ fn mul(args: Vec<V>, _: &mut Env) -> Result<V> {
             _ => bail!("[*] invalid argument"),
         }
     }
-    Ok(V::new(S::Num(ans)))
+    Ok(num(ans))
 }
 fn div(args: Vec<V>, _: &mut Env) -> Result<V> {
     match &args[..] {
@@ -297,7 +299,7 @@ fn div(args: Vec<V>, _: &mut Env) -> Result<V> {
                         _ => bail!("[/] invalid argument"),
                     }
                 }
-                Ok(V::new(S::Num(ans)))
+                Ok(num(ans))
             }
             _ => bail!("[/] invalid argument"),
         },
@@ -363,13 +365,13 @@ fn cdr(args: Vec<V>, _: &mut Env) -> Result<V> {
 fn is_null(args: Vec<V>, _: &mut Env) -> Result<V> {
     match &args[..] {
         [h] => match *h.get() {
-            S::Nil => Ok(V::new(S::Bool(true))),
+            S::Nil => Ok(bool(true)),
             S::Lazy(ref sexp) => match &*sexp.to_v().get() {
                 S::Pair(..) => Ok(bool(false)),
                 S::Nil => Ok(bool(true)),
                 _ => unreachable!(),
             },
-            _ => Ok(V::new(S::Bool(false))),
+            _ => Ok(bool(false)),
         },
         _ => bail!("number of argument is incorrect"),
     }
@@ -377,7 +379,7 @@ fn is_null(args: Vec<V>, _: &mut Env) -> Result<V> {
 fn is_pair(args: Vec<V>, _: &mut Env) -> Result<V> {
     match &args[..] {
         [h] => match *h.get() {
-            S::Pair(_, _) => Ok(V::new(S::Bool(true))),
+            S::Pair(_, _) => Ok(bool(true)),
             S::Lazy(ref sexp) => match &*sexp.to_v().get() {
                 S::Pair(..) => Ok(bool(true)),
                 S::Nil => Ok(bool(false)),
@@ -391,15 +393,15 @@ fn is_pair(args: Vec<V>, _: &mut Env) -> Result<V> {
 fn is_sym(args: Vec<V>, _: &mut Env) -> Result<V> {
     match &args[..] {
         [h] => match *h.get() {
-            S::Sym(_) => Ok(V::new(S::Bool(true))),
-            _ => Ok(V::new(S::Bool(false))),
+            S::Sym(_) => Ok(bool(true)),
+            _ => Ok(bool(false)),
         },
         _ => bail!("number of argument is incorrect"),
     }
 }
 fn is_list(args: Vec<V>, _: &mut Env) -> Result<V> {
     match &args[..] {
-        [h] => Ok(V::new(S::Bool(h.is_list()))),
+        [h] => Ok(bool(h.is_list())),
         _ => bail!("number of argument is incorrect"),
     }
 }
@@ -407,7 +409,7 @@ fn length(args: Vec<V>, _: &mut Env) -> Result<V> {
     match &args[..] {
         [h] => match h.to_list() {
             (_, Some(_)) => bail!("[length] argument is not a list"),
-            (lst, None) => Ok(V::new(S::Num(lst.len() as i64))),
+            (lst, None) => Ok(num(lst.len() as i64)),
         },
 
         _ => bail!("number of argument is incorrect"),
@@ -431,7 +433,7 @@ fn memq(args: Vec<V>, _: &mut Env) -> Result<V> {
                 }
             }
             if l.is_list() {
-                Ok(V::new(S::Bool(helper(x, l))))
+                Ok(bool(helper(x, l)))
             } else {
                 bail!("[memq] argument is not a list")
             }
@@ -443,8 +445,8 @@ fn memq(args: Vec<V>, _: &mut Env) -> Result<V> {
 fn list(args: Vec<V>, _: &mut Env) -> Result<V> {
     fn helper(args: &[V]) -> V {
         match args.split_first() {
-            None => V::new(S::Nil),
-            Some((h, t)) => V::new(S::Pair(h.clone(), helper(t))),
+            None => nil(),
+            Some((h, t)) => pair(h, &helper(t)),
         }
     }
     Ok(helper(&args))
@@ -483,7 +485,7 @@ fn append(args: Vec<V>, _: &mut Env) -> Result<V> {
     fn helper(x: &V, y: &V) -> V {
         match &*x.get() {
             S::Nil => y.clone(),
-            S::Pair(car, cdr) => V::new(S::Pair(car.clone(), helper(&cdr, y))),
+            S::Pair(car, cdr) => pair(car, &helper(&cdr, y)),
             S::Lazy(sexp) => helper(&sexp.to_v(), y),
             _ => panic!(),
         }
@@ -503,7 +505,7 @@ fn append(args: Vec<V>, _: &mut Env) -> Result<V> {
 fn math_eq(args: Vec<V>, _: &mut Env) -> Result<V> {
     match &args[..] {
         [x, y] => match (&*x.get(), &*y.get()) {
-            (S::Num(ref x), S::Num(ref y)) => Ok(V::new(S::Bool(x == y))),
+            (S::Num(ref x), S::Num(ref y)) => Ok(bool(x == y)),
             _ => bail!("[=] invalid argument"),
         },
         _ => bail!("number of argument is incorrect"),
@@ -512,7 +514,7 @@ fn math_eq(args: Vec<V>, _: &mut Env) -> Result<V> {
 fn math_ls(args: Vec<V>, _: &mut Env) -> Result<V> {
     match &args[..] {
         [x, y] => match (&*x.get(), &*y.get()) {
-            (S::Num(ref x), S::Num(ref y)) => Ok(V::new(S::Bool(x < y))),
+            (S::Num(ref x), S::Num(ref y)) => Ok(bool(x < y)),
             _ => bail!("[<] invalid argument"),
         },
         _ => bail!("number of argument is incorrect"),
@@ -521,7 +523,7 @@ fn math_ls(args: Vec<V>, _: &mut Env) -> Result<V> {
 fn math_gt(args: Vec<V>, _: &mut Env) -> Result<V> {
     match &args[..] {
         [x, y] => match (&*x.get(), &*y.get()) {
-            (S::Num(ref x), S::Num(ref y)) => Ok(V::new(S::Bool(x > y))),
+            (S::Num(ref x), S::Num(ref y)) => Ok(bool(x > y)),
             _ => bail!("[>] invalid argument"),
         },
         _ => bail!("number of argument is incorrect"),
@@ -530,7 +532,7 @@ fn math_gt(args: Vec<V>, _: &mut Env) -> Result<V> {
 fn math_leq(args: Vec<V>, _: &mut Env) -> Result<V> {
     match &args[..] {
         [x, y] => match (&*x.get(), &*y.get()) {
-            (S::Num(ref x), S::Num(ref y)) => Ok(V::new(S::Bool(x <= y))),
+            (S::Num(ref x), S::Num(ref y)) => Ok(bool(x <= y)),
             _ => bail!("[<] invalid argument"),
         },
         _ => bail!("number of argument is incorrect"),
@@ -539,7 +541,7 @@ fn math_leq(args: Vec<V>, _: &mut Env) -> Result<V> {
 fn math_gteq(args: Vec<V>, _: &mut Env) -> Result<V> {
     match &args[..] {
         [x, y] => match (&*x.get(), &*y.get()) {
-            (S::Num(ref x), S::Num(ref y)) => Ok(V::new(S::Bool(x >= y))),
+            (S::Num(ref x), S::Num(ref y)) => Ok(bool(x >= y)),
             _ => bail!("[>] invalid argument"),
         },
         _ => bail!("number of argument is incorrect"),
@@ -547,13 +549,13 @@ fn math_gteq(args: Vec<V>, _: &mut Env) -> Result<V> {
 }
 fn eq(args: Vec<V>, _: &mut Env) -> Result<V> {
     match &args[..] {
-        [x, y] => Ok(V::new(S::Bool(V::ptr_eq(x, y)))),
+        [x, y] => Ok(bool(V::ptr_eq(x, y))),
         _ => bail!("number of argument is incorrect"),
     }
 }
 fn cons(args: Vec<V>, _: &mut Env) -> Result<V> {
     match &args[..] {
-        [x, y] => Ok(V::new(S::Pair(x.clone(), y.clone()))),
+        [x, y] => Ok(pair(x, y)),
         _ => bail!("number of argument is incorrect"),
     }
 }

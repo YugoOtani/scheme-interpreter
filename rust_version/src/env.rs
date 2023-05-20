@@ -1,5 +1,5 @@
 use crate::gc::*;
-use crate::scheme_fn::root_fn;
+use crate::scheme_fn::root_fn_list;
 use crate::token::Id;
 use anyhow::Context;
 use anyhow::Result;
@@ -42,7 +42,7 @@ impl Env {
         Ok(self.add_sym(&id))
     }
     pub fn get_sym(&self, id: &Id) -> Option<V> {
-        self.sym.get(id).map(|rc| rc.clone())
+        self.sym.get(id).map(|v| v.clone())
     }
 }
 
@@ -56,7 +56,7 @@ impl Frame {
     }
     pub fn root_frame() -> Frame {
         Frame {
-            vars: root_fn()
+            vars: root_fn_list()
                 .into_iter()
                 .map(|(s, f)| {
                     let s = Id::new(&s).expect("root_fn must generate valid function name");
@@ -91,7 +91,7 @@ impl Frame {
         }
     }
     pub fn alloc(&mut self, id: &Id) {
-        self.vars.insert(id.clone(), None);
+        let old = self.vars.insert(id.clone(), None);
     }
     pub fn alloc_new<'a>(&'a mut self, id: &Id) -> Option<()> {
         if self.vars.contains_key(id) {
@@ -120,11 +120,12 @@ impl Frame {
         }
     }
     pub fn insert<'a>(&'a mut self, id: &Id, val: &'a V) {
-        self.vars.insert(id.clone(), Some(val.clone()));
+        let old = self.vars.insert(id.clone(), Some(val.clone()));
     }
     pub fn replace<'a>(&'a mut self, id: &Id, val: &'a V) -> Option<()> {
         if self.vars.contains_key(id) {
-            self.vars.insert(id.clone(), Some(val.clone()));
+            let old = self.vars.insert(id.clone(), Some(val.clone())).unwrap();
+
             return Some(());
         }
         match self.par {

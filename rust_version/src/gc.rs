@@ -28,9 +28,26 @@ pub fn pair(car: &V, cdr: &V) -> V {
 pub fn none() -> V {
     alloc(SchemeVal::None)
 }
+pub fn root_fn(f: Func) -> V {
+    alloc(SchemeVal::RootFn(f))
+}
+pub fn closure(f: SchemeVal) -> V {
+    alloc(f)
+}
+pub fn lazy(exp: SExp) -> V {
+    alloc(SchemeVal::Lazy(exp))
+}
+pub fn vmacro(p: Params, exp: Exp) -> V {
+    alloc(SchemeVal::Macro(p, exp))
+}
 pub fn alloc(val: SchemeVal) -> V {
     unsafe {
         GC.mark_and_sweep();
+        println!(
+            "stack = {}, memory = {}",
+            GC.on_stack.len(),
+            GC.memory.len()
+        );
         let v = V::new(val);
         GC.memory.push(v.clone());
         GC.on_stack.push(v.clone());
@@ -164,26 +181,27 @@ impl V {
 
 pub struct VBox {
     check: bool,
+    cnt: usize,
     val: SchemeVal,
 }
 
-impl Drop for VBox {
-    fn drop(&mut self) {
-        println!("dropping vbox")
-    }
-}
 pub struct V {
     ptr: *mut VBox,
 }
 impl Clone for V {
     fn clone(&self) -> Self {
+        self.inner().cnt += 1;
         V { ptr: self.ptr }
     }
 }
 impl V {
-    pub fn new(val: SchemeVal) -> V {
+    fn new(val: SchemeVal) -> V {
         V {
-            ptr: Box::into_raw(Box::new(VBox { check: false, val })),
+            ptr: Box::into_raw(Box::new(VBox {
+                check: false,
+                cnt: 1,
+                val,
+            })),
         }
     }
     fn inner(&self) -> &mut VBox {
@@ -199,6 +217,11 @@ impl V {
 }
 impl Drop for V {
     fn drop(&mut self) {
-        unsafe { GC.on_stack.retain(|p| p.ptr != self.ptr) }
+        self.inner().cnt -= 1;
+        if self.inner().cnt == 2 {
+            unsafe {
+                GC.on_stack.retain(|p| p.ptr != self.ptr);
+            }
+        }
     }
 }
