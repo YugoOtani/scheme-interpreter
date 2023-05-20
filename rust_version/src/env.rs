@@ -1,6 +1,6 @@
+use crate::gc::*;
 use crate::scheme_fn::root_fn;
 use crate::token::Id;
-use crate::token::V;
 use anyhow::Context;
 use anyhow::Result;
 use std::cell::*;
@@ -30,9 +30,11 @@ impl Env {
     }
     pub fn add_sym(&mut self, id: &Id) -> V {
         if !self.sym.contains_key(id) {
-            let v = V::sym(id.clone());
-            self.sym.insert(id.clone(), v.clone());
-            v
+            unsafe {
+                let v = sym(id.clone());
+                self.sym.insert(id.clone(), v.clone());
+                v
+            }
         } else {
             self.sym.get(id).unwrap().clone()
         }

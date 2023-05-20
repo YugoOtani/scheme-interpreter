@@ -1,3 +1,4 @@
+use crate::gc::*;
 use crate::{env::*, parser::parse_token, token::*, tosexp::ToSExp};
 use anyhow::{bail, ensure, Context, Result};
 type EResult = Result<V>;
@@ -50,7 +51,7 @@ impl Exp {
                     ref args,
                 } => {
                     let func = fname.eval(env)?;
-                    match &*func.get().borrow() {
+                    match func.get() {
                         SchemeVal::RootFn(f) => {
                             let mut args_v = vec![];
                             for e in args {
@@ -101,7 +102,7 @@ impl Exp {
                 Exp::ExpandMacro(ref id, ref exps) => match env.get_frame().borrow().find(&id) {
                     None => bail!("macro {} not found", id.get()),
                     Some(m) => {
-                        if let SchemeVal::Macro(prms, sexp) = &*m.get().borrow() {
+                        if let SchemeVal::Macro(prms, sexp) = m.get() {
                             let res = expand_macro(prms, &exps, sexp, env)?;
                             let top = parse_token(&res.to_string())?;
                             let ret = top.eval(env);
@@ -117,7 +118,7 @@ impl Exp {
                         .borrow_mut()
                         .insert(&id, &V::new(SchemeVal::Macro(prms, *exp)));
                     env.set_frame(initial_frame);
-                    break Ok(V::none());
+                    break Ok(none());
                 }
                 Exp::Lambda(prms, body) => {
                     let closure = SchemeVal::Closure(env.get_frame(), prms.clone(), body.clone());
@@ -221,8 +222,8 @@ impl Exp {
                     else_exp,
                 } => {
                     let cond = cond.eval(env)?;
-                    let b = match *cond.get().borrow() {
-                        SchemeVal::Bool(b) => b,
+                    let b = match cond.get() {
+                        SchemeVal::Bool(b) => *b,
                         _ => bail!("condition of if statement is not bool"),
                     };
                     if b {
@@ -260,9 +261,9 @@ impl Exp {
                             },
                             Some(Branch { cond, then, ret }) => {
                                 let cond = cond.eval(env)?;
-                                match *cond.get().borrow() {
+                                match cond.get() {
                                     SchemeVal::Bool(b) => {
-                                        if b {
+                                        if *b {
                                             for exp in then {
                                                 exp.eval(env)?;
                                             }
@@ -283,7 +284,7 @@ impl Exp {
                     v => {
                         let (last, elems) = v.split_last().unwrap();
                         for exp in elems {
-                            match *exp.eval(env)?.get().borrow() {
+                            match exp.eval(env)?.get() {
                                 SchemeVal::Bool(false) => {
                                     env.set_frame(initial_frame);
                                     return Ok(V::new(SchemeVal::Bool(false)));
@@ -303,7 +304,7 @@ impl Exp {
                         let (last, elems) = v.split_last().unwrap();
                         for exp in elems {
                             let v = exp.eval(env)?;
-                            match *v.get().borrow() {
+                            match v.get() {
                                 SchemeVal::Bool(false) => continue,
                                 _ => {
                                     env.set_frame(initial_frame);
@@ -432,23 +433,26 @@ impl Id {
 impl SExp {
     pub fn to_v(&self) -> V {
         fn helper(v: &[SExp], tail: &Option<Box<SExp>>) -> V {
-            match v {
-                [] => panic!(),
-                [h] => V::pair(
-                    &h.to_v(),
-                    &match tail {
-                        Some(v) => v.to_v(),
-                        None => V::nil(),
-                    },
-                ),
-                [h, t @ ..] => V::pair(&h.to_v(), &helper(t, tail)),
+            unsafe {
+                match v {
+                    [] => panic!(),
+                    [h] => pair(
+                        &h.to_v(),
+                        &match tail {
+                            Some(v) => v.to_v(),
+                            None => nil(),
+                        },
+                    ),
+                    [h, t @ ..] => pair(&h.to_v(), &helper(t, tail)),
+                }
             }
         }
+
         match self {
             SExp::Const(c) => c.eval(),
-            SExp::Id(id) => V::sym(id.clone()),
+            SExp::Id(id) => sym(id.clone()),
             SExp::List { elems, tail } => match &elems[..] {
-                [] => V::nil(),
+                [] => nil(),
                 e => helper(e, tail),
             },
         }

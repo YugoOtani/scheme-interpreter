@@ -1,4 +1,5 @@
 use crate::env::{Env, Frame};
+use crate::gc::*;
 use anyhow::Result;
 use std::cell::*;
 use std::rc::Rc;
@@ -124,7 +125,7 @@ pub enum Const {
     String(String),
     Nil,
 }
-type Num = i64;
+pub type Num = i64;
 
 pub enum SchemeVal {
     Num(Num),
@@ -139,9 +140,11 @@ pub enum SchemeVal {
     Lazy(SExp), // TODO: rename
     None,
 }
-pub struct V(Rc<RefCell<SchemeVal>>);
-
 type Func = Box<dyn Fn(Vec<V>, &mut Env) -> Result<V>>;
+/*pub struct V(Rc<RefCell<SchemeVal>>);
+
+
+
 
 impl V {
     pub fn ptr_eq(this: &Self, other: &Self) -> bool {
@@ -255,3 +258,8 @@ impl V {
         }
     }
 }
+impl Drop for SchemeVal {
+    fn drop(&mut self) {
+        println!("dropping scval")
+    }
+}*/
