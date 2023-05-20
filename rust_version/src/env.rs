@@ -30,11 +30,9 @@ impl Env {
     }
     pub fn add_sym(&mut self, id: &Id) -> V {
         if !self.sym.contains_key(id) {
-            unsafe {
-                let v = sym(id.clone());
-                self.sym.insert(id.clone(), v.clone());
-                v
-            }
+            let v = sym(id.clone());
+            self.sym.insert(id.clone(), v.clone());
+            v
         } else {
             self.sym.get(id).unwrap().clone()
         }

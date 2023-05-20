@@ -6,7 +6,7 @@ pub mod parser;
 pub mod scheme_fn;
 pub mod token;
 pub mod tosexp;
-use crate::dbg_token::TDbg;
+
 use crate::env::Env;
 use crate::parser::parse_tkns;
 use crate::token::Toplevel;

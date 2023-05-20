@@ -1,7 +1,7 @@
 use crate::token::*;
 use std::ptr::drop_in_place;
 
-const N: usize = 1000_000;
+//const N: usize = 1000_000;
 static mut GC: Gc = Gc {
     on_stack: vec![],
     memory: vec![],

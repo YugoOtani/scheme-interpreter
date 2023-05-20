@@ -56,11 +56,9 @@ fn print(args: Vec<V>, _: &mut Env) -> Result<V> {
     Ok(none())
 }
 fn neq(args: Vec<V>, _: &mut Env) -> Result<V> {
-    unsafe {
-        match &args[..] {
-            [x, y] => Ok(bool(!V::ptr_eq(x, y))),
-            _ => bail!("number of argument is incorrect"),
-        }
+    match &args[..] {
+        [x, y] => Ok(bool(!V::ptr_eq(x, y))),
+        _ => bail!("number of argument is incorrect"),
     }
 }
 fn equal(args: Vec<V>, _: &mut Env) -> Result<V> {

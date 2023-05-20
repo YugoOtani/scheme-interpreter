@@ -433,18 +433,16 @@ impl Id {
 impl SExp {
     pub fn to_v(&self) -> V {
         fn helper(v: &[SExp], tail: &Option<Box<SExp>>) -> V {
-            unsafe {
-                match v {
-                    [] => panic!(),
-                    [h] => pair(
-                        &h.to_v(),
-                        &match tail {
-                            Some(v) => v.to_v(),
-                            None => nil(),
-                        },
-                    ),
-                    [h, t @ ..] => pair(&h.to_v(), &helper(t, tail)),
-                }
+            match v {
+                [] => panic!(),
+                [h] => pair(
+                    &h.to_v(),
+                    &match tail {
+                        Some(v) => v.to_v(),
+                        None => nil(),
+                    },
+                ),
+                [h, t @ ..] => pair(&h.to_v(), &helper(t, tail)),
             }
         }
 
