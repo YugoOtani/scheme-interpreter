@@ -220,7 +220,7 @@ fn set_car(args: Vec<V>, _: &mut Env) -> Result<V> {
                     _ => bail!("[set-car] first argument must be a pair"),
                 }
             };
-            *x.get_mut() = S::Pair(y.clone(), cdr);
+            x.set(S::Pair(y.clone(), cdr));
             Ok(none())
         }
         _ => bail!("[set-car] number of argument is incorrect"),
@@ -230,8 +230,7 @@ fn set_cdr(args: Vec<V>, _: &mut Env) -> Result<V> {
     match &args[..] {
         [x, y] => {
             let car = {
-                let rf = x.get();
-                match rf {
+                match x.get() {
                     S::Pair(car, _) => car.clone(),
                     S::Lazy(sexp) => match sexp.to_v().get() {
                         S::Pair(car, _) => car.clone(),
@@ -241,7 +240,8 @@ fn set_cdr(args: Vec<V>, _: &mut Env) -> Result<V> {
                     _ => bail!("[set-cdr] first argument must be a pair"),
                 }
             };
-            *x.get_mut() = S::Pair(car, y.clone());
+            x.set(S::Pair(car, y.clone()));
+
             Ok(none())
         }
         _ => bail!("[set-car] number of argument is incorrect"),

@@ -1,4 +1,5 @@
 use crate::token::*;
+use std::cell::*;
 use std::ptr::drop_in_place;
 
 //const N: usize = 1000_000;
@@ -23,7 +24,12 @@ pub fn sym(id: Id) -> V {
     alloc(SchemeVal::Sym(id))
 }
 pub fn pair(car: &V, cdr: &V) -> V {
-    alloc(SchemeVal::Pair(car.clone(), cdr.clone()))
+    let car = car.clone();
+    let cdr = cdr.clone();
+    car.unroot();
+    cdr.unroot();
+
+    alloc(SchemeVal::Pair(car, cdr)) // return value is rooted
 }
 pub fn none() -> V {
     alloc(SchemeVal::None)
@@ -49,23 +55,47 @@ pub fn alloc(val: SchemeVal) -> V {
             GC.memory.len()
         );
         let v = V::new(val);
-        GC.memory.push(v.clone());
-        GC.on_stack.push(v.clone());
+        let v1 = v.clone();
+        let v2 = v.clone();
+        v1.unroot();
+        v2.unroot();
+        GC.memory.push(v1);
+        GC.on_stack.push(v2);
         v
+    }
+}
+pub fn pr() {
+    unsafe {
+        for x in &GC.memory {
+            println!("{} {} {}", x.get().dbg(), x.inner().cnt, x.root.get())
+        }
     }
 }
 pub struct Gc {
     memory: Vec<V>,
     on_stack: Vec<V>,
 }
+#[test]
+fn gc_test() {
+    let x = pair(&num(1), &num(2));
+    let y = pair(&num(3), &x);
+    println!("{} {}", x.root.get(), y.root.get());
+}
 impl Gc {
     fn mark_and_sweep(&mut self) {
-        for v in &self.on_stack {
-            v.mark()
-        }
+        self.on_stack.retain(|data| {
+            if data.inner().cnt > 0 {
+                data.inner().check = true;
+                data.mark();
+                true
+            } else {
+                false
+            }
+        });
         self.memory.retain(|data| {
             if data.inner().check {
                 data.inner().check = false;
+                data.unmark();
                 true
             } else {
                 data.free();
@@ -88,6 +118,22 @@ impl V {
             SchemeVal::Pair(ref car, ref cdr) => {
                 car.mark();
                 cdr.mark();
+            }
+            _ => return,
+        }
+    }
+    pub fn unmark(&self) {
+        let checked = self.inner().check;
+        if !checked {
+            return;
+        } else {
+            self.inner().check = false;
+        }
+
+        match self.inner().val {
+            SchemeVal::Pair(ref car, ref cdr) => {
+                car.unmark();
+                cdr.unmark();
             }
             _ => return,
         }
@@ -181,17 +227,22 @@ impl V {
 
 pub struct VBox {
     check: bool,
-    cnt: usize,
     val: SchemeVal,
+    cnt: usize,
 }
 
 pub struct V {
     ptr: *mut VBox,
+    root: Cell<bool>,
 }
 impl Clone for V {
     fn clone(&self) -> Self {
         self.inner().cnt += 1;
-        V { ptr: self.ptr }
+
+        V {
+            ptr: self.ptr,
+            root: Cell::new(true),
+        }
     }
 }
 impl V {
@@ -199,17 +250,33 @@ impl V {
         V {
             ptr: Box::into_raw(Box::new(VBox {
                 check: false,
-                cnt: 1,
                 val,
+                cnt: 1,
             })),
+            root: Cell::new(true),
         }
     }
     fn inner(&self) -> &mut VBox {
         unsafe { self.ptr.as_mut().unwrap() }
     }
+    pub fn unroot(&self) {
+        if self.root.get() {
+            self.root.set(false);
+            self.inner().cnt -= 1;
+            self.inner().val.unroot();
+        }
+    }
+    fn root(&self) {
+        if !self.root.get() {
+            self.inner().cnt += 1;
+            self.root.set(true);
+        }
+    }
 
-    pub fn get_mut(&self) -> &mut SchemeVal {
-        &mut self.inner().val
+    pub fn set(&self, val: SchemeVal) {
+        val.unroot();
+        self.inner().val = val;
+        self.root()
     }
     pub fn get(&self) -> &SchemeVal {
         &self.inner().val
@@ -217,11 +284,19 @@ impl V {
 }
 impl Drop for V {
     fn drop(&mut self) {
-        self.inner().cnt -= 1;
-        if self.inner().cnt == 2 {
-            unsafe {
-                GC.on_stack.retain(|p| p.ptr != self.ptr);
-            }
+        if self.root.get() {
+            self.inner().cnt -= 1;
+        }
+        if self.inner().cnt == 0 {
+            unsafe { GC.on_stack.retain(|p| p.ptr != self.ptr) }
+        }
+    }
+}
+impl SchemeVal {
+    pub fn unroot(&self) {
+        if let SchemeVal::Pair(car, cdr) = self {
+            car.unroot();
+            cdr.unroot();
         }
     }
 }

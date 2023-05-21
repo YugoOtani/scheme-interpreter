@@ -141,6 +141,24 @@ pub enum SchemeVal {
     None,
 }
 pub type Func = Box<dyn Fn(Vec<V>, &mut Env) -> Result<V>>;
+
+impl SchemeVal {
+    pub fn dbg(&self) -> String {
+        match self {
+            SchemeVal::Num(i) => i.to_string(),
+            SchemeVal::Bool(b) => b.to_string(),
+            SchemeVal::String(s) => s.to_string(),
+            SchemeVal::Nil => "nil".to_string(),
+            SchemeVal::Sym(s) => s.get().to_string(),
+            SchemeVal::Pair(car, _) => format!("pair{}", car.to_string()),
+            SchemeVal::RootFn(_) => "fn".to_string(),
+            SchemeVal::Closure(_, _, _) => "fn".to_string(),
+            SchemeVal::Macro(_, _) => "macro".to_string(),
+            SchemeVal::Lazy(_) => "lazy".to_string(),
+            SchemeVal::None => "none".to_string(),
+        }
+    }
+}
 /*pub struct V(Rc<RefCell<SchemeVal>>);
 
 

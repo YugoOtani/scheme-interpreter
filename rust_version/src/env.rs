@@ -91,7 +91,7 @@ impl Frame {
         }
     }
     pub fn alloc(&mut self, id: &Id) {
-        let old = self.vars.insert(id.clone(), None);
+        self.vars.insert(id.clone(), None);
     }
     pub fn alloc_new<'a>(&'a mut self, id: &Id) -> Option<()> {
         if self.vars.contains_key(id) {
@@ -120,11 +120,11 @@ impl Frame {
         }
     }
     pub fn insert<'a>(&'a mut self, id: &Id, val: &'a V) {
-        let old = self.vars.insert(id.clone(), Some(val.clone()));
+        self.vars.insert(id.clone(), Some(val.clone()));
     }
     pub fn replace<'a>(&'a mut self, id: &Id, val: &'a V) -> Option<()> {
         if self.vars.contains_key(id) {
-            let old = self.vars.insert(id.clone(), Some(val.clone())).unwrap();
+            self.vars.insert(id.clone(), Some(val.clone())).unwrap();
 
             return Some(());
         }

@@ -8,6 +8,7 @@ pub mod token;
 pub mod tosexp;
 
 use crate::env::Env;
+use crate::gc::pr;
 use crate::parser::parse_tkns;
 use crate::token::Toplevel;
 use anyhow::anyhow;
@@ -45,6 +46,7 @@ fn main() {
                 }
             }
         }
+        //pr();
         match parse_token(&input) {
             Err(e) => println!("{e}"),
             Ok(Toplevel::Load(fname)) => {
