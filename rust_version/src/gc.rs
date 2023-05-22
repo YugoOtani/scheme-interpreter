@@ -3,10 +3,7 @@ use std::cell::*;
 use std::ptr::drop_in_place;
 
 //const N: usize = 1000_000;
-static mut GC: Gc = Gc {
-    on_stack: vec![],
-    memory: vec![],
-};
+static mut MEMORY: Vec<V> = vec![];
 
 pub fn num(n: Num) -> V {
     alloc(SchemeVal::Num(n))
@@ -51,12 +48,9 @@ pub fn alloc(val: SchemeVal) -> V {
         let v = V::new(val);
 
         let v1 = v.clone();
-        let v2 = v.clone();
         v1.unroot();
-        v2.unroot();
-        GC.memory.push(v1);
-        GC.on_stack.push(v2);
-        GC.mark_and_sweep();
+        MEMORY.push(v1);
+        mark_and_sweep();
         assert!(v.inner().cnt == 1);
         v
     }
@@ -66,30 +60,18 @@ pub fn print_mem_usage() {
         /*for x in &GC.memory {
             println!("{} {}", x.get().dbg(), x.inner().cnt)
         }*/
-        println!("{} values are in use", GC.memory.len())
+        println!("{} values are in use", MEMORY.len())
     }
 }
-pub struct Gc {
-    memory: Vec<V>,
-    on_stack: Vec<V>,
-}
-#[test]
-fn gc_test() {
-    let x = pair(&num(1), &num(2));
-    let y = pair(&num(3), &x);
-    println!("{} {}", x.root.get(), y.root.get());
-}
-impl Gc {
-    fn mark_and_sweep(&mut self) {
-        self.on_stack.retain(|data| {
+
+pub fn mark_and_sweep() {
+    unsafe {
+        for data in &MEMORY {
             if data.inner().cnt > 0 {
                 data.mark();
-                true
-            } else {
-                false
             }
-        });
-        self.memory.retain(|data| {
+        }
+        MEMORY.retain(|data| {
             if data.inner().check {
                 data.unmark();
                 true
@@ -289,7 +271,6 @@ impl Drop for V {
         }
         if self.inner().cnt == 0 {
             self.get().unroot();
-            unsafe { GC.on_stack.retain(|p| p.ptr != self.ptr) }
         }
     }
 }
