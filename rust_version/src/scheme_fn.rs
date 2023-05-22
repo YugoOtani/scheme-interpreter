@@ -48,11 +48,10 @@ fn sf(s: &str, f: impl Fn(Vec<V>, &mut Env) -> Result<V> + 'static) -> (String, 
     (s.to_string(), root_fn(Box::new(f)))
 }
 fn print(args: Vec<V>, _: &mut Env) -> Result<V> {
-    let mut s = String::new();
     for arg in &args {
-        s.push_str(&arg.to_string());
+        println!("{}", arg.to_string());
     }
-    println!("{}", s);
+
     Ok(none())
 }
 
@@ -212,7 +211,7 @@ fn set_car(args: Vec<V>, _: &mut Env) -> Result<V> {
                 let rf = x.get();
                 match rf {
                     S::Pair(_, cdr) => cdr.clone(),
-                    S::Lazy(sexp) => match &*sexp.to_v().get() {
+                    S::Lazy(sexp) => match &*sexp.get() {
                         S::Pair(_, cdr) => cdr.clone(),
                         S::Nil => bail!("[set-car] cannot apply to nil"),
                         _ => unreachable!(),
@@ -232,7 +231,7 @@ fn set_cdr(args: Vec<V>, _: &mut Env) -> Result<V> {
             let car = {
                 match x.get() {
                     S::Pair(car, _) => car.clone(),
-                    S::Lazy(sexp) => match sexp.to_v().get() {
+                    S::Lazy(sexp) => match sexp.get() {
                         S::Pair(car, _) => car.clone(),
                         S::Nil => bail!("[set-cdr] cannot apply to nil"),
                         _ => unreachable!(),
@@ -308,9 +307,9 @@ fn div(args: Vec<V>, _: &mut Env) -> Result<V> {
 
 fn car(args: Vec<V>, _: &mut Env) -> Result<V> {
     match &args[..] {
-        [h] => match &*h.get() {
+        [h] => match h.get() {
             S::Pair(car, _) => Ok(car.clone()),
-            S::Lazy(sexp) => match &*sexp.to_v().get() {
+            S::Lazy(sexp) => match sexp.get() {
                 S::Pair(car, _) => Ok(car.clone()),
                 S::Nil => bail!("[car] cannot apply to nil"),
                 _ => unreachable!(),
@@ -326,8 +325,8 @@ fn car(args: Vec<V>, _: &mut Env) -> Result<V> {
 // not yet implemented S::Lazy
 fn caar(args: Vec<V>, _: &mut Env) -> Result<V> {
     match &args[..] {
-        [h] => match &*h.get() {
-            S::Pair(car, _) => match &*car.get() {
+        [h] => match h.get() {
+            S::Pair(car, _) => match car.get() {
                 S::Pair(car, _) => Ok(car.clone()),
                 _ => bail!("[caar] can only be applied to pair"),
             },
@@ -338,8 +337,8 @@ fn caar(args: Vec<V>, _: &mut Env) -> Result<V> {
 }
 fn cdar(args: Vec<V>, _: &mut Env) -> Result<V> {
     match &args[..] {
-        [h] => match &*h.get() {
-            S::Pair(car, _) => match &*car.get() {
+        [h] => match h.get() {
+            S::Pair(car, _) => match car.get() {
                 S::Pair(_, cdr) => Ok(cdr.clone()),
                 _ => bail!("[caar] can only be applied to pair"),
             },
@@ -350,9 +349,9 @@ fn cdar(args: Vec<V>, _: &mut Env) -> Result<V> {
 }
 fn cdr(args: Vec<V>, _: &mut Env) -> Result<V> {
     match &args[..] {
-        [h] => match &*h.get() {
+        [h] => match h.get() {
             S::Pair(_, cdr) => Ok(cdr.clone()),
-            S::Lazy(sexp) => match &*sexp.to_v().get() {
+            S::Lazy(sexp) => match sexp.get() {
                 S::Pair(_, cdr) => Ok(cdr.clone()),
                 S::Nil => bail!("[cdsr] cannot apply to nil"),
                 _ => unreachable!(),
@@ -366,7 +365,7 @@ fn is_null(args: Vec<V>, _: &mut Env) -> Result<V> {
     match &args[..] {
         [h] => match *h.get() {
             S::Nil => Ok(bool(true)),
-            S::Lazy(ref sexp) => match &*sexp.to_v().get() {
+            S::Lazy(ref sexp) => match &*sexp.get() {
                 S::Pair(..) => Ok(bool(false)),
                 S::Nil => Ok(bool(true)),
                 _ => unreachable!(),
@@ -380,7 +379,7 @@ fn is_pair(args: Vec<V>, _: &mut Env) -> Result<V> {
     match &args[..] {
         [h] => match *h.get() {
             S::Pair(_, _) => Ok(bool(true)),
-            S::Lazy(ref sexp) => match &*sexp.to_v().get() {
+            S::Lazy(ref sexp) => match &*sexp.get() {
                 S::Pair(..) => Ok(bool(true)),
                 S::Nil => Ok(bool(false)),
                 _ => unreachable!(),
@@ -468,9 +467,9 @@ fn last(args: Vec<V>, _: &mut Env) -> Result<V> {
                 match *h.get() {
                     S::Nil => bail!("[last] list is empty"),
                     S::Pair(_, _) => Ok(helper(h)),
-                    S::Lazy(ref sexp) => match &*sexp.to_v().get() {
+                    S::Lazy(ref sexp) => match sexp.get() {
                         S::Nil => bail!("[last] list is empty"),
-                        _ => Ok(helper(&sexp.to_v())),
+                        _ => Ok(helper(&sexp)),
                     },
                     _ => panic!(),
                 }
@@ -486,7 +485,7 @@ fn append(args: Vec<V>, _: &mut Env) -> Result<V> {
         match &*x.get() {
             S::Nil => y.clone(),
             S::Pair(car, cdr) => pair(car, &helper(&cdr, y)),
-            S::Lazy(sexp) => helper(&sexp.to_v(), y),
+            S::Lazy(sexp) => helper(&sexp, y),
             _ => panic!(),
         }
     }
@@ -555,7 +554,10 @@ fn eq(args: Vec<V>, _: &mut Env) -> Result<V> {
 }
 fn cons(args: Vec<V>, _: &mut Env) -> Result<V> {
     match &args[..] {
-        [x, y] => Ok(pair(x, y)),
+        [x, y] => {
+            let p = pair(x, y);
+            Ok(p)
+        }
         _ => bail!("number of argument is incorrect"),
     }
 }

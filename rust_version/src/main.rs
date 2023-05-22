@@ -8,7 +8,7 @@ pub mod token;
 pub mod tosexp;
 
 use crate::env::Env;
-use crate::gc::pr;
+use crate::gc::print_mem_usage;
 use crate::parser::parse_tkns;
 use crate::token::Toplevel;
 use anyhow::anyhow;
@@ -51,7 +51,10 @@ fn main() {
             Err(e) => println!("{e}"),
             Ok(Toplevel::Load(fname)) => {
                 match exec_load(fname, &mut env) {
-                    Ok(msg) => println!("{msg}"),
+                    Ok(msg) => {
+                        println!("");
+                        println!("{msg}")
+                    }
                     Err(msg) => println!("{msg}"),
                 };
             }
@@ -75,6 +78,9 @@ fn main() {
                 }
             }
         }
+        println!("");
+        print_mem_usage();
+        println!("");
     }
 }
 

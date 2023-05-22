@@ -158,7 +158,28 @@ impl TDbg for Exp {
                 id.tdbg(n + 1);
                 exp.tdbg(n + 1);
             }
+            Exp::Do {
+                binds,
+                pred,
+                ret,
+                body,
+            } => {
+                Self::pln(n, "Exp(Do)");
+                binds.tdbg(n + 1);
+                pred.tdbg(n + 1);
+                ret.tdbg(n + 1);
+                body.tdbg(n + 1);
+            }
         }
+    }
+}
+impl TDbg for DoBind {
+    fn tdbg(&self, n: usize) {
+        let DoBind { name, init, update } = self;
+        Self::pln(n, "DoBind");
+        name.tdbg(n + 1);
+        init.tdbg(n + 1);
+        update.tdbg(n + 1);
     }
 }
 impl TDbg for Define {

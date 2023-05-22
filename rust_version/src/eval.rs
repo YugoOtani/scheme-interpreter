@@ -1,3 +1,4 @@
+use crate::dbg_token::TDbg;
 use crate::gc::*;
 use crate::{env::*, parser::parse_token, token::*, tosexp::ToSExp};
 use anyhow::{bail, ensure, Context, Result};
@@ -42,9 +43,10 @@ impl Exp {
                     break Ok(v);
                 }
                 Exp::Id(id) => {
-                    let v = id.eval(env);
+                    let v = id.eval(env)?;
+                    //println!("{} {}", id.get(), v.to_string());
                     env.set_frame(initial_frame);
-                    break v;
+                    break Ok(v);
                 }
                 Exp::FunCall {
                     ref fname,
@@ -107,7 +109,7 @@ impl Exp {
                     Some(m) => {
                         if let SchemeVal::Macro(prms, sexp) = m.get() {
                             let res = expand_macro(prms, &exps, sexp, env)?;
-                            let top = parse_token(&res.to_string())?;
+                            let top = parse_token(&res)?;
                             let ret = top.eval(env);
                             env.set_frame(initial_frame);
                             break ret;
@@ -327,9 +329,80 @@ impl Exp {
                     }
                     exp = last.clone();
                 }
+                Exp::Do {
+                    ref binds,
+                    ref pred,
+                    ref ret,
+                    ref body,
+                } => {
+                    let current_frame = env.get_frame();
+                    let eval_frame = Frame::empty(&current_frame);
+                    for DoBind {
+                        name,
+                        init,
+                        update: _,
+                    } in binds
+                    {
+                        let v = init.eval(env)?;
+                        eval_frame.borrow_mut().insert_new(&name, &v);
+                    }
+                    env.set_frame(eval_frame);
+                    break loop {
+                        match pred.eval(env)?.get() {
+                            SchemeVal::Bool(true) => {
+                                if ret.is_empty() {
+                                    env.set_frame(initial_frame);
+                                    break Ok(none());
+                                } else {
+                                    let (last, other) = ret.split_last().unwrap();
+                                    for exp in other {
+                                        exp.eval(env)?;
+                                    }
+                                    let ret = last.eval(env);
+                                    env.set_frame(initial_frame);
+                                    break ret;
+                                }
+                            }
+                            SchemeVal::Bool(false) => {
+                                let Body { defs, exps, ret } = body;
+                                for def in defs {
+                                    def.eval(env)?;
+                                }
+                                for exp in exps {
+                                    exp.eval(env)?;
+                                }
+                                ret.eval(env)?;
+                                let mut new_vals = vec![];
+                                for DoBind {
+                                    name: _,
+                                    init: _,
+                                    update,
+                                } in binds
+                                {
+                                    new_vals.push(update.eval(env)?);
+                                }
+                                for (name, val) in binds
+                                    .iter()
+                                    .map(
+                                        |DoBind {
+                                             name,
+                                             init: _,
+                                             update: _,
+                                         }| name,
+                                    )
+                                    .zip(new_vals)
+                                {
+                                    env.get_frame().borrow_mut().replace(name, &val);
+                                }
+                                continue;
+                            }
+                            _ => bail!("[do] test result is not bool"),
+                        }
+                    };
+                }
             }
-        };
-        r
+        }?;
+        Ok(r)
     }
 }
 
@@ -345,7 +418,7 @@ fn let2_env(binds: &[Bind], env: &mut Env) -> Result<()> {
         }
     }
 }
-fn expand_macro(prms: &Params, exps: &Vec<SExp>, ret: &Exp, env: &mut Env) -> Result<V> {
+fn expand_macro(prms: &Params, exps: &Vec<SExp>, ret: &Exp, env: &mut Env) -> Result<String> {
     let Params { prms, other } = prms;
     let initial_frame = env.get_frame();
     match other {
@@ -355,12 +428,12 @@ fn expand_macro(prms: &Params, exps: &Vec<SExp>, ret: &Exp, env: &mut Env) -> Re
             } else {
                 let new_frame = Frame::empty(&initial_frame);
                 for (id, exp) in prms.iter().zip(exps.iter()) {
-                    new_frame.borrow_mut().insert(id, &lazy(exp.clone()))
+                    new_frame.borrow_mut().insert(id, &lazy(exp.to_v()))
                 }
                 env.set_frame(new_frame);
-                let ret = ret.eval(env);
+                let ret = ret.eval(env)?.to_string();
                 env.set_frame(initial_frame);
-                ret
+                Ok(ret)
             }
         }
         Some(v) => {
@@ -368,18 +441,17 @@ fn expand_macro(prms: &Params, exps: &Vec<SExp>, ret: &Exp, env: &mut Env) -> Re
                 bail!("[expand-macro] number of argument is incorrect")
             } else {
                 let new_frame = Frame::empty(&initial_frame);
+
                 for (id, exp) in prms.iter().zip(exps.iter()) {
-                    new_frame.borrow_mut().insert(id, &lazy(exp.clone()))
+                    let l = lazy(exp.to_v());
+                    new_frame.borrow_mut().insert(id, &l)
                 }
-                let rest = lazy(SExp::List {
-                    elems: exps[prms.len()..].to_vec(),
-                    tail: None,
-                });
+                let rest = lazy(SExp::list(exps[prms.len()..].to_vec()).to_v());
                 new_frame.borrow_mut().insert(v, &rest);
                 env.set_frame(new_frame);
-                let ret = ret.eval(env);
+                let ret = ret.eval(env)?.to_string();
                 env.set_frame(initial_frame);
-                ret
+                Ok(ret)
             }
         }
     }
@@ -445,14 +517,15 @@ impl SExp {
             }
         }
 
-        match self {
+        let v = match self {
             SExp::Const(c) => c.eval(),
             SExp::Id(id) => sym(id.clone()),
             SExp::List { elems, tail } => match &elems[..] {
                 [] => nil(),
                 e => helper(e, tail),
             },
-        }
+        };
+        v
     }
     fn eval(&self, env: &mut Env) -> EResult {
         match self {

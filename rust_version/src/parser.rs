@@ -60,6 +60,11 @@ where
         Ok((s, res))
     }
 }
+#[test]
+fn p_let() {
+    let s = "(let ((x 'inside) (y x)) y)";
+    println!("{:?}", in_bracket(parse_let)(s));
+}
 pub fn separated_list0<I, O, O2, E, F, G>(
     mut sep: G,
     mut f: F,
@@ -90,19 +95,17 @@ where
             match sep.parse(i.clone()) {
                 Err(Err::Error(_)) => return Ok((i, res)),
                 Err(e) => return Err(e),
-                Ok((i1, _)) => {
-                    if i1.input_len() == len {
-                        return Ok((i1, res));
-                    }
-                    match f.parse(i1.clone()) {
-                        Err(Err::Error(_)) => return Ok((i, res)),
-                        Err(e) => return Err(e),
-                        Ok((i2, o)) => {
-                            res.push(o);
-                            i = i2;
+                Ok((i1, _)) => match f.parse(i1.clone()) {
+                    Err(Err::Error(_)) => return Ok((i, res)),
+                    Err(e) => return Err(e),
+                    Ok((i2, o)) => {
+                        res.push(o);
+                        if i2.input_len() == len {
+                            return Ok((i, res));
                         }
+                        i = i2;
                     }
-                }
+                },
             }
         }
     }
@@ -137,19 +140,17 @@ where
             match sep.parse(i.clone()) {
                 Err(Err::Error(_)) => return Ok((i, res)),
                 Err(e) => return Err(e),
-                Ok((i1, _)) => {
-                    if i1.input_len() == len {
-                        return Ok((i1, res));
-                    }
-                    match f.parse(i1.clone()) {
-                        Err(Err::Error(_)) => return Ok((i, res)),
-                        Err(e) => return Err(e),
-                        Ok((i2, o)) => {
-                            res.push(o);
-                            i = i2;
+                Ok((i1, _)) => match f.parse(i1.clone()) {
+                    Err(Err::Error(_)) => return Ok((i, res)),
+                    Err(e) => return Err(e),
+                    Ok((i2, o)) => {
+                        res.push(o);
+                        if i2.input_len() == len {
+                            return Ok((i, res));
                         }
+                        i = i2;
                     }
-                }
+                },
             }
         }
     }
@@ -169,6 +170,7 @@ fn end_token<'a>(s: &'a str) -> IResult<&'a str, ()> {
         }
     }
 }
+
 fn parse_top(s: &str) -> IResult<&str, Toplevel> {
     if let Ok((s, res)) = map(parse_def, Toplevel::Define)(s) {
         return Ok((s, res));
@@ -250,6 +252,57 @@ fn parse_params(s: &str) -> IResult<&str, Params> {
     }
     in_bracket(parse_multiparams)(s)
 }
+#[test]
+fn do_test() {
+    let s = "(do (
+                    (i 0 (+ i 1))
+                    (j 0 (+ i j))
+                 )
+   ((= i 10) j)
+ (print j))";
+
+    println!("{:?}", in_bracket(parse_do)(s))
+}
+fn parse_do(s: &str) -> IResult<&str, Exp> {
+    let (s, _) = tag("do")(s)?;
+    let (s, _) = end_token(s)?;
+    let (s, binds) = in_bracket(separated_list0(end_token, in_bracket(parse_dobind)))(s)?;
+    let (s, _) = end_token(s)?;
+    let (s, _) = char('(')(s)?;
+    let (s, _) = end_token(s)?;
+    let (s, pred) = parse_exp(s)?;
+
+    let (s, _) = end_token(s)?;
+    let (s, ret) = separated_list0(end_token, parse_exp)(s)?;
+    let (s, _) = multispace0(s)?;
+    let (s, _) = char(')')(s)?;
+    let (s, _) = end_token(s)?;
+    let (s, body) = parse_body(s)?;
+    Ok((
+        s,
+        Exp::Do {
+            binds,
+            pred: Box::new(pred),
+            ret,
+            body,
+        },
+    ))
+}
+fn parse_dobind(s: &str) -> IResult<&str, DoBind> {
+    let (s, id) = parse_id(s)?;
+    let (s, _) = end_token(s)?;
+    let (s, init) = parse_exp(s)?;
+    let (s, _) = end_token(s)?;
+    let (s, update) = parse_exp(s)?;
+    Ok((
+        s,
+        DoBind {
+            name: id,
+            init,
+            update,
+        },
+    ))
+}
 fn parse_multiparams(s: &str) -> IResult<&str, Params> {
     let (s, ids) = separated_list0(multispace1, parse_id)(s)?;
     let (s, id) = opt(parse_prm_rest)(s)?;
@@ -296,6 +349,15 @@ fn one_bind(s: &str) -> IResult<&str, (Id, Exp)> {
     let (s, _) = end_token(s)?;
     let (s, exp) = parse_exp(s)?;
     Ok((s, (id, exp)))
+}
+#[test]
+fn plambda() {
+    let s = "(lambda () (print 'a)(+ 1 2))";
+    let b = "(print 'a)(+ 1 2)";
+
+    println!("{:?}", separated_list1(end_token, parse_exp)(b));
+    println!("{:?}", parse_body(b));
+    println!("{:?}", in_bracket(parse_lambda)(s));
 }
 fn parse_body(s: &str) -> IResult<&str, Body> {
     let (s, defs) = separated_list0(end_token, parse_def)(s)?;
@@ -354,6 +416,9 @@ fn parse_exp(s: &str) -> IResult<&str, Exp> {
     if let Ok((s, res)) = in_bracket(parse_begin)(s) {
         return Ok((s, res));
     }
+    if let Ok((s, res)) = in_bracket(parse_do)(s) {
+        return Ok((s, res));
+    }
     if let Ok((s, res)) = in_bracket(parse_fncall)(s) {
         return Ok((s, res));
     }
@@ -368,6 +433,7 @@ fn parse_lambda(s: &str) -> IResult<&str, Exp> {
 
     Ok((s, Exp::Lambda(prms, body)))
 }
+
 fn parse_quote(s: &str) -> IResult<&str, Exp> {
     if let Ok((s, res)) = in_bracket(parse_quote1)(s) {
         return Ok((s, res));
@@ -399,8 +465,11 @@ fn parse_let(s: &str) -> IResult<&str, Exp> {
     let (s, _) = end_token(s)?;
     let (s, id) = opt(map(permutation((parse_id, end_token)), |(id, _)| id))(s)?;
     let (s, bind) = in_bracket(separated_list0(end_token, parse_bind))(s)?;
+
     let (s, _) = end_token(s)?;
+
     let (s, body) = parse_body(s)?;
+
     Ok((
         s,
         Exp::Let {

@@ -28,7 +28,6 @@ pub fn pair(car: &V, cdr: &V) -> V {
     let cdr = cdr.clone();
     car.unroot();
     cdr.unroot();
-
     alloc(SchemeVal::Pair(car, cdr)) // return value is rooted
 }
 pub fn none() -> V {
@@ -40,35 +39,34 @@ pub fn root_fn(f: Func) -> V {
 pub fn closure(f: SchemeVal) -> V {
     alloc(f)
 }
-pub fn lazy(exp: SExp) -> V {
-    alloc(SchemeVal::Lazy(exp))
+pub fn lazy(v: V) -> V {
+    v.unroot();
+    alloc(SchemeVal::Lazy(v))
 }
 pub fn vmacro(p: Params, exp: Exp) -> V {
     alloc(SchemeVal::Macro(p, exp))
 }
 pub fn alloc(val: SchemeVal) -> V {
     unsafe {
-        GC.mark_and_sweep();
-        println!(
-            "stack = {}, memory = {}",
-            GC.on_stack.len(),
-            GC.memory.len()
-        );
         let v = V::new(val);
+
         let v1 = v.clone();
         let v2 = v.clone();
         v1.unroot();
         v2.unroot();
         GC.memory.push(v1);
         GC.on_stack.push(v2);
+        GC.mark_and_sweep();
+        assert!(v.inner().cnt == 1);
         v
     }
 }
-pub fn pr() {
+pub fn print_mem_usage() {
     unsafe {
-        for x in &GC.memory {
-            println!("{} {} {}", x.get().dbg(), x.inner().cnt, x.root.get())
-        }
+        /*for x in &GC.memory {
+            println!("{} {}", x.get().dbg(), x.inner().cnt)
+        }*/
+        println!("{} values are in use", GC.memory.len())
     }
 }
 pub struct Gc {
@@ -85,7 +83,6 @@ impl Gc {
     fn mark_and_sweep(&mut self) {
         self.on_stack.retain(|data| {
             if data.inner().cnt > 0 {
-                data.inner().check = true;
                 data.mark();
                 true
             } else {
@@ -94,7 +91,6 @@ impl Gc {
         });
         self.memory.retain(|data| {
             if data.inner().check {
-                data.inner().check = false;
                 data.unmark();
                 true
             } else {
@@ -104,20 +100,21 @@ impl Gc {
         });
     }
 }
+
 unsafe impl Send for V {}
 impl V {
     pub fn mark(&self) {
-        let checked = self.inner().check;
-        if checked {
+        if self.inner().check {
             return;
-        } else {
-            self.inner().check = true;
         }
-
+        self.inner().check = true;
         match self.inner().val {
             SchemeVal::Pair(ref car, ref cdr) => {
                 car.mark();
                 cdr.mark();
+            }
+            SchemeVal::Lazy(ref v) => {
+                v.mark();
             }
             _ => return,
         }
@@ -126,14 +123,16 @@ impl V {
         let checked = self.inner().check;
         if !checked {
             return;
-        } else {
-            self.inner().check = false;
         }
+        self.inner().check = false;
 
         match self.inner().val {
             SchemeVal::Pair(ref car, ref cdr) => {
                 car.unmark();
                 cdr.unmark();
+            }
+            SchemeVal::Lazy(ref v) => {
+                v.unmark();
             }
             _ => return,
         }
@@ -154,7 +153,7 @@ impl V {
                     helper(&t, acc)
                 }
                 SchemeVal::Nil => (acc, None),
-                SchemeVal::Lazy(sexp) => helper(&sexp.to_v(), acc),
+                SchemeVal::Lazy(sexp) => helper(&sexp, acc),
                 _ => (acc, Some(v.clone())),
             }
         }
@@ -176,6 +175,7 @@ impl V {
             SchemeVal::Pair(_, _) => {
                 // (a (b (c d))) => (a b c . d)
                 let (lst, tail) = self.to_list();
+
                 let mut ret = String::from("(");
                 ret.push_str(&lst[0].to_string());
                 for e in &lst[1..] {
@@ -190,7 +190,7 @@ impl V {
             }
             SchemeVal::RootFn(_) | SchemeVal::Closure(_, _, _) => "#<procedure>".to_string(),
             SchemeVal::Macro(_, _) => "#<macro>".to_string(),
-            SchemeVal::Lazy(sexp) => sexp.to_v().to_string(),
+            SchemeVal::Lazy(sexp) => sexp.to_string(),
             SchemeVal::None => "(none)".to_string(),
         }
     }
@@ -212,7 +212,7 @@ impl V {
                 _ => t.is_list(),
             },
             SchemeVal::Nil => true,
-            SchemeVal::Lazy(ref sexp) => match sexp.to_v().get() {
+            SchemeVal::Lazy(ref sexp) => match sexp.get() {
                 SchemeVal::Pair(_, cdr) => match cdr.get() {
                     SchemeVal::Nil => true,
                     _ => cdr.is_list(),
@@ -288,6 +288,7 @@ impl Drop for V {
             self.inner().cnt -= 1;
         }
         if self.inner().cnt == 0 {
+            self.get().unroot();
             unsafe { GC.on_stack.retain(|p| p.ptr != self.ptr) }
         }
     }
@@ -297,6 +298,8 @@ impl SchemeVal {
         if let SchemeVal::Pair(car, cdr) = self {
             car.unroot();
             cdr.unroot();
+        } else if let SchemeVal::Lazy(v) = self {
+            v.unroot()
         }
     }
 }

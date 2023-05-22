@@ -243,7 +243,28 @@ impl ToSExp for Exp {
                 }
                 SExp::list(v)
             }
+            Exp::Do {
+                binds,
+                pred,
+                ret,
+                body,
+            } => {
+                let mut v = vec![];
+                v.push("do".to_sexp());
+                v.push(binds.to_sexp());
+                v.push(SExp::list(vec![pred.to_sexp(), ret.to_sexp()]));
+                for e in body.to_sexp() {
+                    v.push(e)
+                }
+                SExp::list(v)
+            }
         }
+    }
+}
+impl ToSExp for DoBind {
+    fn to_sexp(&self) -> SExp {
+        let DoBind { name, init, update } = self;
+        SExp::list(vec![name.to_sexp(), init.to_sexp(), update.to_sexp()])
     }
 }
 impl ToSExp for Const {

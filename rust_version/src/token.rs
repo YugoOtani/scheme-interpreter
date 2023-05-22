@@ -51,6 +51,18 @@ pub enum Exp {
     Begin(Vec<Exp>),
     DefMacro(Id, Params, Box<Exp>),
     ExpandMacro(Id, Vec<SExp>),
+    Do {
+        binds: Vec<DoBind>,
+        pred: Box<Exp>,
+        ret: Vec<Exp>,
+        body: Body,
+    },
+}
+#[derive(Debug, Clone)]
+pub struct DoBind {
+    pub name: Id,
+    pub init: Exp,
+    pub update: Exp,
 }
 #[derive(Debug, Clone)]
 pub struct Branch {
@@ -137,7 +149,7 @@ pub enum SchemeVal {
     RootFn(Func),
     Closure(Rc<RefCell<Frame>>, Params, Body),
     Macro(Params, Exp),
-    Lazy(SExp), // TODO: rename
+    Lazy(V), // TODO: rename
     None,
 }
 pub type Func = Box<dyn Fn(Vec<V>, &mut Env) -> Result<V>>;
