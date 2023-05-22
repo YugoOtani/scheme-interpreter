@@ -53,7 +53,7 @@ impl Exp {
                     ref args,
                 } => {
                     let func = fname.eval(env)?;
-                    match func.get() {
+                    match func.get_val() {
                         SchemeVal::RootFn(f) => {
                             let mut args_v = vec![];
                             for e in args {
@@ -107,7 +107,7 @@ impl Exp {
                 Exp::ExpandMacro(ref id, ref exps) => match env.get_frame().borrow().find(&id) {
                     None => bail!("macro {} not found", id.get()),
                     Some(m) => {
-                        if let SchemeVal::Macro(prms, sexp) = m.get() {
+                        if let SchemeVal::Macro(prms, sexp) = m.get_val() {
                             let res = expand_macro(prms, &exps, sexp, env)?;
                             let top = parse_token(&res)?;
                             let ret = top.eval(env);
@@ -227,7 +227,7 @@ impl Exp {
                     else_exp,
                 } => {
                     let cond = cond.eval(env)?;
-                    let b = match cond.get() {
+                    let b = match cond.get_val() {
                         SchemeVal::Bool(b) => *b,
                         _ => bail!("condition of if statement is not bool"),
                     };
@@ -266,7 +266,7 @@ impl Exp {
                             },
                             Some(Branch { cond, then, ret }) => {
                                 let cond = cond.eval(env)?;
-                                match cond.get() {
+                                match cond.get_val() {
                                     SchemeVal::Bool(b) => {
                                         if *b {
                                             for exp in then {
@@ -289,7 +289,7 @@ impl Exp {
                     v => {
                         let (last, elems) = v.split_last().unwrap();
                         for exp in elems {
-                            match exp.eval(env)?.get() {
+                            match exp.eval(env)?.get_val() {
                                 SchemeVal::Bool(false) => {
                                     env.set_frame(initial_frame);
                                     return Ok(bool(false));
@@ -309,7 +309,7 @@ impl Exp {
                         let (last, elems) = v.split_last().unwrap();
                         for exp in elems {
                             let v = exp.eval(env)?;
-                            match v.get() {
+                            match v.get_val() {
                                 SchemeVal::Bool(false) => continue,
                                 _ => {
                                     env.set_frame(initial_frame);
@@ -348,7 +348,7 @@ impl Exp {
                     }
                     env.set_frame(eval_frame);
                     break loop {
-                        match pred.eval(env)?.get() {
+                        match pred.eval(env)?.get_val() {
                             SchemeVal::Bool(true) => {
                                 if ret.is_empty() {
                                     env.set_frame(initial_frame);

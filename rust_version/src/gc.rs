@@ -23,8 +23,8 @@ pub fn sym(id: Id) -> V {
 pub fn pair(car: &V, cdr: &V) -> V {
     let car = car.clone();
     let cdr = cdr.clone();
-    car.unroot();
-    cdr.unroot();
+    car.force_unroot();
+    cdr.force_unroot();
     alloc(SchemeVal::Pair(car, cdr)) // return value is rooted
 }
 pub fn none() -> V {
@@ -37,7 +37,7 @@ pub fn closure(f: SchemeVal) -> V {
     alloc(f)
 }
 pub fn lazy(v: V) -> V {
-    v.unroot();
+    v.force_unroot();
     alloc(SchemeVal::Lazy(v))
 }
 pub fn vmacro(p: Params, exp: Exp) -> V {
@@ -48,10 +48,10 @@ pub fn alloc(val: SchemeVal) -> V {
         let v = V::new(val);
 
         let v1 = v.clone();
-        v1.unroot();
+        v1.force_unroot();
         MEMORY.push(v1);
         mark_and_sweep();
-        assert!(v.inner().cnt == 1);
+        assert!(v.deref().cnt == 1);
         v
     }
 }
@@ -67,12 +67,12 @@ pub fn print_mem_usage() {
 pub fn mark_and_sweep() {
     unsafe {
         for data in &MEMORY {
-            if data.inner().cnt > 0 {
+            if data.deref().cnt > 0 {
                 data.mark();
             }
         }
         MEMORY.retain(|data| {
-            if data.inner().check {
+            if data.deref().check {
                 data.unmark();
                 true
             } else {
@@ -86,11 +86,11 @@ pub fn mark_and_sweep() {
 unsafe impl Send for V {}
 impl V {
     pub fn mark(&self) {
-        if self.inner().check {
+        if self.deref().check {
             return;
         }
-        self.inner().check = true;
-        match self.inner().val {
+        self.deref().check = true;
+        match self.deref().val {
             SchemeVal::Pair(ref car, ref cdr) => {
                 car.mark();
                 cdr.mark();
@@ -102,13 +102,13 @@ impl V {
         }
     }
     pub fn unmark(&self) {
-        let checked = self.inner().check;
+        let checked = self.deref().check;
         if !checked {
             return;
         }
-        self.inner().check = false;
+        self.deref().check = false;
 
-        match self.inner().val {
+        match self.deref().val {
             SchemeVal::Pair(ref car, ref cdr) => {
                 car.unmark();
                 cdr.unmark();
@@ -129,7 +129,7 @@ impl V {
 
     pub fn to_list(&self) -> (Vec<V>, Option<V>) {
         fn helper(v: &V, mut acc: Vec<V>) -> (Vec<V>, Option<V>) {
-            match v.get() {
+            match v.get_val() {
                 SchemeVal::Pair(h, t) => {
                     acc.push(h.clone());
                     helper(&t, acc)
@@ -142,7 +142,7 @@ impl V {
         helper(self, vec![])
     }
     pub fn to_string(&self) -> String {
-        match self.get() {
+        match self.get_val() {
             SchemeVal::Num(n) => n.to_string(),
             SchemeVal::Bool(b) => {
                 if *b {
@@ -188,14 +188,14 @@ impl V {
         }
     }
     pub fn is_list(&self) -> bool {
-        match self.get() {
-            SchemeVal::Pair(_, t) => match t.get() {
+        match self.get_val() {
+            SchemeVal::Pair(_, t) => match t.get_val() {
                 SchemeVal::Nil => true,
                 _ => t.is_list(),
             },
             SchemeVal::Nil => true,
-            SchemeVal::Lazy(ref sexp) => match sexp.get() {
-                SchemeVal::Pair(_, cdr) => match cdr.get() {
+            SchemeVal::Lazy(ref sexp) => match sexp.get_val() {
+                SchemeVal::Pair(_, cdr) => match cdr.get_val() {
                     SchemeVal::Nil => true,
                     _ => cdr.is_list(),
                 },
@@ -219,7 +219,7 @@ pub struct V {
 }
 impl Clone for V {
     fn clone(&self) -> Self {
-        self.inner().cnt += 1;
+        self.deref().cnt += 1;
 
         V {
             ptr: self.ptr,
@@ -227,6 +227,7 @@ impl Clone for V {
         }
     }
 }
+
 impl V {
     fn new(val: SchemeVal) -> V {
         V {
@@ -238,49 +239,49 @@ impl V {
             root: Cell::new(true),
         }
     }
-    fn inner(&self) -> &mut VBox {
+    fn deref(&self) -> &mut VBox {
         unsafe { self.ptr.as_mut().unwrap() }
     }
-    pub fn unroot(&self) {
+    pub fn force_unroot(&self) {
         if self.root.get() {
             self.root.set(false);
-            self.inner().cnt -= 1;
-            self.inner().val.unroot();
+            self.deref().cnt -= 1;
+            self.deref().val.unroot();
         }
     }
-    fn root(&self) {
+    fn force_root(&self) {
         if !self.root.get() {
-            self.inner().cnt += 1;
+            self.deref().cnt += 1;
             self.root.set(true);
         }
     }
 
-    pub fn set(&self, val: SchemeVal) {
+    pub fn set_val(&self, val: SchemeVal) {
         val.unroot();
-        self.inner().val = val;
-        self.root()
+        self.deref().val = val;
+        self.force_root()
     }
-    pub fn get(&self) -> &SchemeVal {
-        &self.inner().val
+    pub fn get_val(&self) -> &SchemeVal {
+        &self.deref().val
     }
 }
 impl Drop for V {
     fn drop(&mut self) {
         if self.root.get() {
-            self.inner().cnt -= 1;
+            self.deref().cnt -= 1;
         }
-        if self.inner().cnt == 0 {
-            self.get().unroot();
+        if self.deref().cnt == 0 {
+            self.get_val().unroot();
         }
     }
 }
 impl SchemeVal {
     pub fn unroot(&self) {
         if let SchemeVal::Pair(car, cdr) = self {
-            car.unroot();
-            cdr.unroot();
+            car.force_unroot();
+            cdr.force_unroot();
         } else if let SchemeVal::Lazy(v) = self {
-            v.unroot()
+            v.force_unroot()
         }
     }
 }

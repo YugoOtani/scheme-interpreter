@@ -63,32 +63,32 @@ fn neq(args: Vec<V>, _: &mut Env) -> Result<V> {
 }
 fn equal(args: Vec<V>, _: &mut Env) -> Result<V> {
     fn helper(s1: &V, s2: &V) -> bool {
-        match &*s1.get() {
+        match &*s1.get_val() {
             S::Bool(b1) => {
-                if let S::Bool(b2) = &*s2.get() {
+                if let S::Bool(b2) = &*s2.get_val() {
                     b1 == b2
                 } else {
                     false
                 }
             }
             S::Num(n1) => {
-                if let S::Num(n2) = &*s2.get() {
+                if let S::Num(n2) = &*s2.get_val() {
                     n1 == n2
                 } else {
                     false
                 }
             }
-            S::Nil => matches!(&*s2.get(), S::Nil),
-            S::None => matches!(&*s2.get(), S::None),
+            S::Nil => matches!(&*s2.get_val(), S::Nil),
+            S::None => matches!(&*s2.get_val(), S::None),
             S::Pair(car1, cdr1) => {
-                if let S::Pair(car2, cdr2) = &*s2.get() {
+                if let S::Pair(car2, cdr2) = &*s2.get_val() {
                     helper(car1, car2) && helper(cdr1, cdr2)
                 } else {
                     false
                 }
             }
             S::Sym(id1) => {
-                if let S::Sym(id2) = &*s2.get() {
+                if let S::Sym(id2) = &*s2.get_val() {
                     let valeq = id1.get() == id2.get();
                     let refeq = V::ptr_eq(s1, s2);
                     assert!(valeq == refeq);
@@ -98,7 +98,7 @@ fn equal(args: Vec<V>, _: &mut Env) -> Result<V> {
                 }
             }
             S::String(s1) => {
-                if let S::String(s2) = &*s2.get() {
+                if let S::String(s2) = &*s2.get_val() {
                     s1 == s2
                 } else {
                     false
@@ -119,7 +119,7 @@ fn equal(args: Vec<V>, _: &mut Env) -> Result<V> {
 }
 fn string_num(args: Vec<V>, _: &mut Env) -> Result<V> {
     match &args[..] {
-        [x] => match *x.get() {
+        [x] => match *x.get_val() {
             S::String(ref s) => {
                 let n = s.parse::<i64>().context("[string->number] parse fail")?;
                 Ok(num(n))
@@ -131,7 +131,7 @@ fn string_num(args: Vec<V>, _: &mut Env) -> Result<V> {
 }
 fn not(args: Vec<V>, _: &mut Env) -> Result<V> {
     match &args[..] {
-        [x] => match *x.get() {
+        [x] => match *x.get_val() {
             S::Bool(b) => Ok(bool(!b)),
             _ => bail!("[not] invalid argument"),
         },
@@ -140,7 +140,7 @@ fn not(args: Vec<V>, _: &mut Env) -> Result<V> {
 }
 fn is_number(args: Vec<V>, _: &mut Env) -> Result<V> {
     match &args[..] {
-        [x] => match *x.get() {
+        [x] => match *x.get_val() {
             S::Num(_) => Ok(bool(true)),
             _ => Ok(bool(false)),
         },
@@ -149,7 +149,7 @@ fn is_number(args: Vec<V>, _: &mut Env) -> Result<V> {
 }
 fn num_string(args: Vec<V>, _: &mut Env) -> Result<V> {
     match &args[..] {
-        [x] => match *x.get() {
+        [x] => match *x.get_val() {
             S::Num(ref n) => Ok(string(&n.to_string())),
             _ => bail!("[number->string] invalid argument"),
         },
@@ -158,7 +158,7 @@ fn num_string(args: Vec<V>, _: &mut Env) -> Result<V> {
 }
 fn string_sym(args: Vec<V>, env: &mut Env) -> Result<V> {
     match &args[..] {
-        [x] => match *x.get() {
+        [x] => match *x.get_val() {
             S::String(ref s) => env.add_sym_s(s),
             _ => bail!("[string->symbol] invalid argument"),
         },
@@ -167,7 +167,7 @@ fn string_sym(args: Vec<V>, env: &mut Env) -> Result<V> {
 }
 fn sym_string(args: Vec<V>, _: &mut Env) -> Result<V> {
     match &args[..] {
-        [x] => match *x.get() {
+        [x] => match *x.get_val() {
             S::Sym(ref id) => Ok(string(id.get())),
             _ => bail!("[symbol->string] invalid argument"),
         },
@@ -177,7 +177,7 @@ fn sym_string(args: Vec<V>, _: &mut Env) -> Result<V> {
 fn string_append(args: Vec<V>, _: &mut Env) -> Result<V> {
     let mut ret = String::new();
     for arg in &args[..] {
-        match *arg.get() {
+        match *arg.get_val() {
             S::String(ref s) => ret.push_str(s),
             _ => bail!("invalid argument"),
         }
@@ -186,7 +186,7 @@ fn string_append(args: Vec<V>, _: &mut Env) -> Result<V> {
 }
 fn is_bool(args: Vec<V>, _: &mut Env) -> Result<V> {
     match &args[..] {
-        [x] => match *x.get() {
+        [x] => match *x.get_val() {
             S::Bool(_) => Ok(bool(true)),
             _ => Ok(bool(false)),
         },
@@ -195,7 +195,7 @@ fn is_bool(args: Vec<V>, _: &mut Env) -> Result<V> {
 }
 fn is_proc(args: Vec<V>, _: &mut Env) -> Result<V> {
     match &args[..] {
-        [x] => match *x.get() {
+        [x] => match *x.get_val() {
             S::Closure(..) => Ok(bool(true)),
             S::RootFn(_) => Ok(bool(true)),
             _ => Ok(bool(false)),
@@ -208,10 +208,10 @@ fn set_car(args: Vec<V>, _: &mut Env) -> Result<V> {
     match &args[..] {
         [x, y] => {
             let cdr = {
-                let rf = x.get();
+                let rf = x.get_val();
                 match rf {
                     S::Pair(_, cdr) => cdr.clone(),
-                    S::Lazy(sexp) => match &*sexp.get() {
+                    S::Lazy(sexp) => match &*sexp.get_val() {
                         S::Pair(_, cdr) => cdr.clone(),
                         S::Nil => bail!("[set-car] cannot apply to nil"),
                         _ => unreachable!(),
@@ -219,7 +219,7 @@ fn set_car(args: Vec<V>, _: &mut Env) -> Result<V> {
                     _ => bail!("[set-car] first argument must be a pair"),
                 }
             };
-            x.set(S::Pair(y.clone(), cdr));
+            x.set_val(S::Pair(y.clone(), cdr));
             Ok(none())
         }
         _ => bail!("[set-car] number of argument is incorrect"),
@@ -229,9 +229,9 @@ fn set_cdr(args: Vec<V>, _: &mut Env) -> Result<V> {
     match &args[..] {
         [x, y] => {
             let car = {
-                match x.get() {
+                match x.get_val() {
                     S::Pair(car, _) => car.clone(),
-                    S::Lazy(sexp) => match sexp.get() {
+                    S::Lazy(sexp) => match sexp.get_val() {
                         S::Pair(car, _) => car.clone(),
                         S::Nil => bail!("[set-cdr] cannot apply to nil"),
                         _ => unreachable!(),
@@ -239,7 +239,7 @@ fn set_cdr(args: Vec<V>, _: &mut Env) -> Result<V> {
                     _ => bail!("[set-cdr] first argument must be a pair"),
                 }
             };
-            x.set(S::Pair(car, y.clone()));
+            x.set_val(S::Pair(car, y.clone()));
 
             Ok(none())
         }
@@ -249,7 +249,7 @@ fn set_cdr(args: Vec<V>, _: &mut Env) -> Result<V> {
 fn add(args: Vec<V>, _: &mut Env) -> Result<V> {
     let mut ans = 0;
     for e in &args {
-        match *e.get() {
+        match *e.get_val() {
             S::Num(n) => ans += n,
             _ => bail!("invalid argument"),
         }
@@ -260,11 +260,11 @@ fn add(args: Vec<V>, _: &mut Env) -> Result<V> {
 fn sub(args: Vec<V>, _: &mut Env) -> Result<V> {
     match &args[..] {
         [] => bail!("[-] number of argument is incorrect"),
-        [h, t @ ..] => match *h.get() {
+        [h, t @ ..] => match *h.get_val() {
             S::Num(i) => {
                 let mut ans = i;
                 for e in t {
-                    match *e.get() {
+                    match *e.get_val() {
                         S::Num(j) => ans -= j,
                         _ => bail!("[-] invalid argument"),
                     }
@@ -278,7 +278,7 @@ fn sub(args: Vec<V>, _: &mut Env) -> Result<V> {
 fn mul(args: Vec<V>, _: &mut Env) -> Result<V> {
     let mut ans = 1;
     for e in args {
-        match *e.get() {
+        match *e.get_val() {
             S::Num(n) => ans *= n,
             _ => bail!("[*] invalid argument"),
         }
@@ -288,11 +288,11 @@ fn mul(args: Vec<V>, _: &mut Env) -> Result<V> {
 fn div(args: Vec<V>, _: &mut Env) -> Result<V> {
     match &args[..] {
         [] => bail!("[/] number of argument is incorrect"),
-        [h, t @ ..] => match *h.get() {
+        [h, t @ ..] => match *h.get_val() {
             S::Num(i) => {
                 let mut ans = i;
                 for e in t {
-                    match *e.get() {
+                    match *e.get_val() {
                         S::Num(0) => bail!("[/] division by zero"),
                         S::Num(i) => ans /= i,
                         _ => bail!("[/] invalid argument"),
@@ -307,9 +307,9 @@ fn div(args: Vec<V>, _: &mut Env) -> Result<V> {
 
 fn car(args: Vec<V>, _: &mut Env) -> Result<V> {
     match &args[..] {
-        [h] => match h.get() {
+        [h] => match h.get_val() {
             S::Pair(car, _) => Ok(car.clone()),
-            S::Lazy(sexp) => match sexp.get() {
+            S::Lazy(sexp) => match sexp.get_val() {
                 S::Pair(car, _) => Ok(car.clone()),
                 S::Nil => bail!("[car] cannot apply to nil"),
                 _ => unreachable!(),
@@ -325,8 +325,8 @@ fn car(args: Vec<V>, _: &mut Env) -> Result<V> {
 // not yet implemented S::Lazy
 fn caar(args: Vec<V>, _: &mut Env) -> Result<V> {
     match &args[..] {
-        [h] => match h.get() {
-            S::Pair(car, _) => match car.get() {
+        [h] => match h.get_val() {
+            S::Pair(car, _) => match car.get_val() {
                 S::Pair(car, _) => Ok(car.clone()),
                 _ => bail!("[caar] can only be applied to pair"),
             },
@@ -337,8 +337,8 @@ fn caar(args: Vec<V>, _: &mut Env) -> Result<V> {
 }
 fn cdar(args: Vec<V>, _: &mut Env) -> Result<V> {
     match &args[..] {
-        [h] => match h.get() {
-            S::Pair(car, _) => match car.get() {
+        [h] => match h.get_val() {
+            S::Pair(car, _) => match car.get_val() {
                 S::Pair(_, cdr) => Ok(cdr.clone()),
                 _ => bail!("[caar] can only be applied to pair"),
             },
@@ -349,9 +349,9 @@ fn cdar(args: Vec<V>, _: &mut Env) -> Result<V> {
 }
 fn cdr(args: Vec<V>, _: &mut Env) -> Result<V> {
     match &args[..] {
-        [h] => match h.get() {
+        [h] => match h.get_val() {
             S::Pair(_, cdr) => Ok(cdr.clone()),
-            S::Lazy(sexp) => match sexp.get() {
+            S::Lazy(sexp) => match sexp.get_val() {
                 S::Pair(_, cdr) => Ok(cdr.clone()),
                 S::Nil => bail!("[cdsr] cannot apply to nil"),
                 _ => unreachable!(),
@@ -363,9 +363,9 @@ fn cdr(args: Vec<V>, _: &mut Env) -> Result<V> {
 }
 fn is_null(args: Vec<V>, _: &mut Env) -> Result<V> {
     match &args[..] {
-        [h] => match *h.get() {
+        [h] => match *h.get_val() {
             S::Nil => Ok(bool(true)),
-            S::Lazy(ref sexp) => match &*sexp.get() {
+            S::Lazy(ref sexp) => match &*sexp.get_val() {
                 S::Pair(..) => Ok(bool(false)),
                 S::Nil => Ok(bool(true)),
                 _ => unreachable!(),
@@ -377,9 +377,9 @@ fn is_null(args: Vec<V>, _: &mut Env) -> Result<V> {
 }
 fn is_pair(args: Vec<V>, _: &mut Env) -> Result<V> {
     match &args[..] {
-        [h] => match *h.get() {
+        [h] => match *h.get_val() {
             S::Pair(_, _) => Ok(bool(true)),
-            S::Lazy(ref sexp) => match &*sexp.get() {
+            S::Lazy(ref sexp) => match &*sexp.get_val() {
                 S::Pair(..) => Ok(bool(true)),
                 S::Nil => Ok(bool(false)),
                 _ => unreachable!(),
@@ -391,7 +391,7 @@ fn is_pair(args: Vec<V>, _: &mut Env) -> Result<V> {
 }
 fn is_sym(args: Vec<V>, _: &mut Env) -> Result<V> {
     match &args[..] {
-        [h] => match *h.get() {
+        [h] => match *h.get_val() {
             S::Sym(_) => Ok(bool(true)),
             _ => Ok(bool(false)),
         },
@@ -418,7 +418,7 @@ fn memq(args: Vec<V>, _: &mut Env) -> Result<V> {
     match &args[..] {
         [x, l] => {
             fn helper(a: &V, lst: &V) -> bool {
-                match &*lst.get() {
+                match &*lst.get_val() {
                     S::Pair(car, cdr) => {
                         if V::ptr_eq(&a, &car) {
                             true
@@ -452,8 +452,8 @@ fn list(args: Vec<V>, _: &mut Env) -> Result<V> {
 }
 fn last(args: Vec<V>, _: &mut Env) -> Result<V> {
     fn helper(lst: &V) -> V {
-        match &*lst.get() {
-            S::Pair(car, cdr) => match *cdr.get() {
+        match &*lst.get_val() {
+            S::Pair(car, cdr) => match *cdr.get_val() {
                 S::Nil => car.clone(),
                 S::Pair(_, _) => helper(&cdr),
                 _ => panic!(),
@@ -464,10 +464,10 @@ fn last(args: Vec<V>, _: &mut Env) -> Result<V> {
     match &args[..] {
         [h] => {
             if h.is_list() {
-                match *h.get() {
+                match *h.get_val() {
                     S::Nil => bail!("[last] list is empty"),
                     S::Pair(_, _) => Ok(helper(h)),
-                    S::Lazy(ref sexp) => match sexp.get() {
+                    S::Lazy(ref sexp) => match sexp.get_val() {
                         S::Nil => bail!("[last] list is empty"),
                         _ => Ok(helper(&sexp)),
                     },
@@ -482,7 +482,7 @@ fn last(args: Vec<V>, _: &mut Env) -> Result<V> {
 }
 fn append(args: Vec<V>, _: &mut Env) -> Result<V> {
     fn helper(x: &V, y: &V) -> V {
-        match &*x.get() {
+        match &*x.get_val() {
             S::Nil => y.clone(),
             S::Pair(car, cdr) => pair(car, &helper(&cdr, y)),
             S::Lazy(sexp) => helper(&sexp, y),
@@ -503,7 +503,7 @@ fn append(args: Vec<V>, _: &mut Env) -> Result<V> {
 
 fn math_eq(args: Vec<V>, _: &mut Env) -> Result<V> {
     match &args[..] {
-        [x, y] => match (&*x.get(), &*y.get()) {
+        [x, y] => match (&*x.get_val(), &*y.get_val()) {
             (S::Num(ref x), S::Num(ref y)) => Ok(bool(x == y)),
             _ => bail!("[=] invalid argument"),
         },
@@ -512,7 +512,7 @@ fn math_eq(args: Vec<V>, _: &mut Env) -> Result<V> {
 }
 fn math_ls(args: Vec<V>, _: &mut Env) -> Result<V> {
     match &args[..] {
-        [x, y] => match (&*x.get(), &*y.get()) {
+        [x, y] => match (&*x.get_val(), &*y.get_val()) {
             (S::Num(ref x), S::Num(ref y)) => Ok(bool(x < y)),
             _ => bail!("[<] invalid argument"),
         },
@@ -521,7 +521,7 @@ fn math_ls(args: Vec<V>, _: &mut Env) -> Result<V> {
 }
 fn math_gt(args: Vec<V>, _: &mut Env) -> Result<V> {
     match &args[..] {
-        [x, y] => match (&*x.get(), &*y.get()) {
+        [x, y] => match (&*x.get_val(), &*y.get_val()) {
             (S::Num(ref x), S::Num(ref y)) => Ok(bool(x > y)),
             _ => bail!("[>] invalid argument"),
         },
@@ -530,7 +530,7 @@ fn math_gt(args: Vec<V>, _: &mut Env) -> Result<V> {
 }
 fn math_leq(args: Vec<V>, _: &mut Env) -> Result<V> {
     match &args[..] {
-        [x, y] => match (&*x.get(), &*y.get()) {
+        [x, y] => match (&*x.get_val(), &*y.get_val()) {
             (S::Num(ref x), S::Num(ref y)) => Ok(bool(x <= y)),
             _ => bail!("[<] invalid argument"),
         },
@@ -539,7 +539,7 @@ fn math_leq(args: Vec<V>, _: &mut Env) -> Result<V> {
 }
 fn math_gteq(args: Vec<V>, _: &mut Env) -> Result<V> {
     match &args[..] {
-        [x, y] => match (&*x.get(), &*y.get()) {
+        [x, y] => match (&*x.get_val(), &*y.get_val()) {
             (S::Num(ref x), S::Num(ref y)) => Ok(bool(x >= y)),
             _ => bail!("[>] invalid argument"),
         },
