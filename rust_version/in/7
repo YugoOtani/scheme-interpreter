@@ -1,0 +1,8 @@
+(let* (
+    (x (cons 1 2)) 
+    (y (cons 3 x)))
+(set-cdr! x y)
+(print (car x))
+(print (car (cdr x)))
+(print (car (cdr (cdr x))))
+(print (car (cdr (cdr (cdr x))))))

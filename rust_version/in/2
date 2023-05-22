@@ -1,0 +1,26 @@
+(print "set!")
+(define x  "x before set!" )
+(print x)
+(set! x  "x after set!" )
+(print x)
+(define (y) (set! x "x after calling y" ))
+(print x)
+(print y)
+(y)
+(print x)
+
+(print "quote")
+(define l '((1 2) 3 4 (5 6 7)))
+(print l)
+(print (car (cdr l)))
+
+(print "and, or")
+(define x "x")
+(print (and "no" "no" #f (set! x "must not be evaluated")))
+(print (and "first" "second" "third" "last"))
+(print (or #f #f "foo" (set! x "must not be evaluated")))
+(print (or #f #f #f))
+(print x)
+
+
+

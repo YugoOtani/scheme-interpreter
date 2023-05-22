@@ -7,6 +7,8 @@ use nom::combinator::*;
 use nom::error::ParseError;
 use nom::sequence::*;
 use nom::*;
+
+// TODO : read magros in nom
 #[test]
 fn exp_test() {
     println!(
