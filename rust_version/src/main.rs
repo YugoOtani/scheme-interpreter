@@ -8,6 +8,7 @@ pub mod token;
 pub mod tosexp;
 
 use crate::env::Env;
+use crate::gc::mark_and_sweep;
 use crate::gc::print_mem_usage;
 use crate::parser::parse_tkns;
 use crate::token::Toplevel;
@@ -78,9 +79,7 @@ fn main() {
                 }
             }
         }
-        println!("");
-        print_mem_usage();
-        println!("");
+        mark_and_sweep();
     }
 }
 

@@ -43,7 +43,7 @@ pub fn lazy(v: V) -> V {
 pub fn vmacro(p: Params, exp: Exp) -> V {
     alloc(SchemeVal::Macro(p, exp))
 }
-pub fn alloc(val: SchemeVal) -> V {
+fn alloc(val: SchemeVal) -> V {
     unsafe {
         let v = V::new(val);
 
