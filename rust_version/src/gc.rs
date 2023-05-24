@@ -1,96 +1,106 @@
 use crate::token::*;
 use std::cell::*;
-use std::ptr::drop_in_place;
 
-//const N: usize = 1000_000;
-static mut MEMORY: Vec<V> = vec![];
+const N: usize = 1000_000;
+const NULL: Option<VBox> = None;
+static mut MEMORY: [Option<VBox>; N] = [NULL; N];
+static mut EMPTYADDR: Vec<usize> = vec![];
+static mut USEDADDR: Vec<usize> = vec![];
+
+pub fn init() {
+    unsafe {
+        for mem in MEMORY.as_mut() {
+            *mem = NULL;
+        }
+        USEDADDR = vec![];
+        EMPTYADDR = Vec::from_iter(0..N);
+    }
+}
+
+struct VBox {
+    val: SchemeVal,
+    cnt: usize,
+    check: bool,
+}
+
+pub struct V {
+    ptr: usize,
+    root: Cell<bool>,
+}
 
 pub fn num(n: Num) -> V {
-    alloc(SchemeVal::Num(n))
+    V::alloc(SchemeVal::Num(n))
 }
 pub fn bool(b: bool) -> V {
-    alloc(SchemeVal::Bool(b))
+    V::alloc(SchemeVal::Bool(b))
 }
 pub fn string(s: &str) -> V {
-    alloc(SchemeVal::String(s.to_string()))
+    V::alloc(SchemeVal::String(s.to_string()))
 }
 pub fn nil() -> V {
-    alloc(SchemeVal::Nil)
+    V::alloc(SchemeVal::Nil)
 }
 pub fn sym(id: Id) -> V {
-    alloc(SchemeVal::Sym(id))
+    V::alloc(SchemeVal::Sym(id))
 }
 pub fn pair(car: &V, cdr: &V) -> V {
     let car = car.clone();
     let cdr = cdr.clone();
     car.force_unroot();
     cdr.force_unroot();
-    alloc(SchemeVal::Pair(car, cdr)) // return value is rooted
+    V::alloc(SchemeVal::Pair(car, cdr)) // return value is rooted
 }
 pub fn none() -> V {
-    alloc(SchemeVal::None)
+    V::alloc(SchemeVal::None)
 }
 pub fn root_fn(f: Func) -> V {
-    alloc(SchemeVal::RootFn(f))
+    V::alloc(SchemeVal::RootFn(f))
 }
 pub fn closure(f: SchemeVal) -> V {
-    alloc(f)
+    V::alloc(f)
 }
 pub fn lazy(v: V) -> V {
     v.force_unroot();
-    alloc(SchemeVal::Lazy(v))
+    V::alloc(SchemeVal::Lazy(v))
 }
 pub fn vmacro(p: Params, exp: Exp) -> V {
-    alloc(SchemeVal::Macro(p, exp))
-}
-fn alloc(val: SchemeVal) -> V {
-    unsafe {
-        let v = V::new(val);
-
-        let v1 = v.clone();
-        v1.force_unroot();
-        MEMORY.push(v1);
-        mark_and_sweep();
-        assert!(v.deref().cnt == 1);
-        v
-    }
-}
-pub fn print_mem_usage() {
-    unsafe {
-        /*for x in &GC.memory {
-            println!("{} {}", x.get().dbg(), x.inner().cnt)
-        }*/
-        println!("{} values are in use", MEMORY.len())
-    }
+    V::alloc(SchemeVal::Macro(p, exp))
 }
 
 pub fn mark_and_sweep() {
     unsafe {
-        for data in &MEMORY {
-            if data.deref().cnt > 0 {
-                data.mark();
+        for (i, data) in MEMORY.iter().enumerate() {
+            if let Some(data) = data {
+                println!("{i} {} ", data.val.dbg())
             }
         }
-        MEMORY.retain(|data| {
-            if data.deref().check {
-                data.unmark();
-                true
-            } else {
-                data.free();
-                false
+        for &i in &USEDADDR {
+            if MEMORY[i].as_ref().unwrap().cnt > 0 {
+                MEMORY[i].as_mut().unwrap().mark();
             }
-        });
+        }
+        let mut save_addr = vec![];
+        while let Some(i) = USEDADDR.pop() {
+            if MEMORY[i].as_ref().unwrap().check {
+                MEMORY[i].as_mut().unwrap().unmark();
+                save_addr.push(i);
+            } else {
+                MEMORY[i] = NULL;
+                EMPTYADDR.push(i);
+            }
+        }
+        while let Some(i) = save_addr.pop() {
+            USEDADDR.push(i)
+        }
     }
 }
-
-unsafe impl Send for V {}
-impl V {
-    pub fn mark(&self) {
-        if self.deref().check {
+impl VBox {
+    pub fn mark(&mut self) {
+        if self.check {
             return;
         }
-        self.deref().check = true;
-        match self.deref().val {
+        self.check = true;
+        match self.val {
             SchemeVal::Pair(ref car, ref cdr) => {
                 car.mark();
                 cdr.mark();
@@ -101,14 +111,13 @@ impl V {
             _ => return,
         }
     }
-    pub fn unmark(&self) {
-        let checked = self.deref().check;
-        if !checked {
+    pub fn unmark(&mut self) {
+        if !self.check {
             return;
         }
-        self.deref().check = false;
+        self.check = false;
 
-        match self.deref().val {
+        match self.val {
             SchemeVal::Pair(ref car, ref cdr) => {
                 car.unmark();
                 cdr.unmark();
@@ -119,9 +128,14 @@ impl V {
             _ => return,
         }
     }
-
-    fn free(&self) {
-        unsafe { drop_in_place(self.ptr) }
+}
+unsafe impl Send for V {}
+impl V {
+    fn mark(&self) {
+        unsafe { MEMORY[self.ptr].as_mut().unwrap().mark() }
+    }
+    fn unmark(&self) {
+        unsafe { MEMORY[self.ptr].as_mut().unwrap().unmark() }
     }
     pub fn ptr_eq(this: &Self, other: &Self) -> bool {
         this.ptr == other.ptr
@@ -179,12 +193,12 @@ impl V {
     pub fn from_list(v: &[V], tail: Option<V>) -> V {
         if v.len() == 0 {
             match tail {
-                None => V::new(SchemeVal::Nil),
+                None => V::alloc(SchemeVal::Nil),
                 Some(v) => v,
             }
         } else {
             let pair = SchemeVal::Pair(v[0].clone(), Self::from_list(&v[1..], tail));
-            V::new(pair)
+            V::alloc(pair)
         }
     }
     pub fn is_list(&self) -> bool {
@@ -207,19 +221,9 @@ impl V {
     }
 }
 
-pub struct VBox {
-    check: bool,
-    val: SchemeVal,
-    cnt: usize,
-}
-
-pub struct V {
-    ptr: *mut VBox,
-    root: Cell<bool>,
-}
 impl Clone for V {
     fn clone(&self) -> Self {
-        self.deref().cnt += 1;
+        self.inc_cnt();
 
         V {
             ptr: self.ptr,
@@ -229,52 +233,80 @@ impl Clone for V {
 }
 
 impl V {
-    fn new(val: SchemeVal) -> V {
-        V {
-            ptr: Box::into_raw(Box::new(VBox {
-                check: false,
+    fn alloc(val: SchemeVal) -> V {
+        unsafe {
+            let addr = match EMPTYADDR.pop() {
+                None => panic!("address is full!"),
+                Some(addr) => {
+                    assert!(addr < N && MEMORY[addr].is_none());
+                    USEDADDR.push(addr);
+                    addr
+                }
+            };
+            MEMORY[addr] = Some(VBox {
                 val,
                 cnt: 1,
-            })),
-            root: Cell::new(true),
+                check: false,
+            });
+            V {
+                ptr: addr,
+                root: Cell::new(true),
+            }
         }
-    }
-    fn deref(&self) -> &mut VBox {
-        unsafe { self.ptr.as_mut().unwrap() }
     }
     pub fn force_unroot(&self) {
         if self.root.get() {
             self.root.set(false);
-            self.deref().cnt -= 1;
-            self.deref().val.unroot();
+            self.dec_cnt();
+            self.get_val().unroot();
         }
     }
     fn force_root(&self) {
         if !self.root.get() {
-            self.deref().cnt += 1;
+            self.inc_cnt();
             self.root.set(true);
         }
+    }
+    pub fn is_root(&self) -> bool {
+        self.root.get()
+    }
+    pub fn get_cnt(&self) -> usize {
+        unsafe {
+            if let None = MEMORY[self.ptr].as_ref() {
+                println!("{}", self.ptr);
+            }
+            MEMORY[self.ptr].as_ref().unwrap().cnt
+        }
+    }
+    pub fn inc_cnt(&self) {
+        unsafe { MEMORY[self.ptr].as_mut().unwrap().cnt += 1 }
+    }
+    pub fn dec_cnt(&self) {
+        unsafe { MEMORY[self.ptr].as_mut().unwrap().cnt -= 1 }
     }
 
     pub fn set_val(&self, val: SchemeVal) {
         val.unroot();
-        self.deref().val = val;
+        unsafe {
+            MEMORY[self.ptr].as_mut().unwrap().val = val;
+        }
         self.force_root()
     }
     pub fn get_val(&self) -> &SchemeVal {
-        &self.deref().val
+        unsafe { &MEMORY[self.ptr].as_ref().unwrap().val }
     }
 }
 impl Drop for V {
     fn drop(&mut self) {
-        if self.root.get() {
-            self.deref().cnt -= 1;
+        if self.is_root() {
+            self.dec_cnt();
         }
-        if self.deref().cnt == 0 {
+        if self.get_cnt() == 0 {
             self.get_val().unroot();
         }
     }
 }
+
 impl SchemeVal {
     pub fn unroot(&self) {
         if let SchemeVal::Pair(car, cdr) = self {
@@ -283,5 +315,13 @@ impl SchemeVal {
         } else if let SchemeVal::Lazy(v) = self {
             v.force_unroot()
         }
+    }
+}
+pub fn print_mem_usage() {
+    unsafe {
+        println!(
+            "{} values are in use",
+            MEMORY.iter().filter(|data| data.is_some()).count()
+        )
     }
 }

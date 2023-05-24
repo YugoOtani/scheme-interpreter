@@ -21,8 +21,9 @@ use std::io::{stdin, stdout, Write};
 use std::time::Instant;
 const CONSOLE: &str = "mini-scheme > ";
 fn main() {
+    gc::init();
     let mut env = Env::new();
-    //exec_load("input".to_string(), &mut env).unwrap();
+
     for _ in 0.. {
         stdout().flush().unwrap();
         print!("{CONSOLE}");
@@ -80,6 +81,7 @@ fn main() {
             }
         }
         mark_and_sweep();
+        print_mem_usage();
     }
 }
 
