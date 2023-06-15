@@ -13,7 +13,7 @@ pub fn init() {
             *mem = NULL;
         }
         USEDADDR = vec![];
-        EMPTYADDR = Vec::from_iter(0..N);
+        EMPTYADDR = Vec::from_iter((0..N).rev());
     }
 }
 
@@ -69,11 +69,6 @@ pub fn vmacro(p: Params, exp: Exp) -> V {
 
 pub fn mark_and_sweep() {
     unsafe {
-        for (i, data) in MEMORY.iter().enumerate() {
-            if let Some(data) = data {
-                println!("{i} {} ", data.val.dbg())
-            }
-        }
         for &i in &USEDADDR {
             if MEMORY[i].as_ref().unwrap().cnt > 0 {
                 MEMORY[i].as_mut().unwrap().mark();
@@ -82,7 +77,6 @@ pub fn mark_and_sweep() {
         let mut save_addr = vec![];
         while let Some(i) = USEDADDR.pop() {
             if MEMORY[i].as_ref().unwrap().check {
-                MEMORY[i].as_mut().unwrap().unmark();
                 save_addr.push(i);
             } else {
                 MEMORY[i] = NULL;
@@ -90,6 +84,7 @@ pub fn mark_and_sweep() {
             }
         }
         while let Some(i) = save_addr.pop() {
+            MEMORY[i].as_mut().unwrap().unmark();
             USEDADDR.push(i)
         }
     }
@@ -301,9 +296,6 @@ impl Drop for V {
         if self.is_root() {
             self.dec_cnt();
         }
-        if self.get_cnt() == 0 {
-            self.get_val().unroot();
-        }
     }
 }
 
@@ -322,6 +314,9 @@ pub fn print_mem_usage() {
         println!(
             "{} values are in use",
             MEMORY.iter().filter(|data| data.is_some()).count()
-        )
+        );
+        for &i in USEDADDR.iter() {
+            println!("{} {}", i, MEMORY[i].as_ref().unwrap().val.dbg())
+        }
     }
 }
