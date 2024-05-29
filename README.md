@@ -1,7 +1,7 @@
 # Scheme Interpreter written in Rust
 ## How to build
 1. You need Rust environment. https://www.rust-lang.org/ja/tools/install
-2. run `cargo run`
+2. run `cargo run` in `rust-version` directory.
 
 ## TODO
 * Garbage Collection is not implemented properly.
