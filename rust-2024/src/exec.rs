@@ -17,16 +17,24 @@ impl VM {
             global: HashMap::new(),
         }
     }
-    pub fn exec(&mut self, mut insn: Vec<Insn>) -> anyhow::Result<String> {
+    pub fn exec(&mut self, mut insn: Vec<Insn>) -> anyhow::Result<()> {
         let mut ip = insn.as_mut_ptr();
         let root = CallFrame {
             ip_prev: ip, // not used
             base: 0,
         };
         let mut frames = vec![root];
-        let mut stk = vec![];
+        let mut stk: Vec<Value> = vec![];
         let mut frame = &mut frames[0];
         loop {
+            print!("{:?}   ", unsafe { ip.as_ref().unwrap() });
+            for (i, v) in stk.iter().enumerate() {
+                if i == frame.base {
+                    print!("|");
+                }
+                print!("{} ", v.to_string())
+            }
+            println!("");
             match unsafe { ip.as_ref().unwrap() } {
                 Insn::None => unreachable!(),
                 Insn::NoneValue => stk.push(Value::None),
@@ -96,10 +104,8 @@ impl VM {
                 }
 
                 Insn::Exit => {
-                    let t = pop(&mut stk)?;
-                    return Ok(t.to_string());
+                    return Ok(());
                 }
-                Insn::Halt => return Ok("".to_string()),
                 Insn::MkClosure(insn) => {
                     stk.push(Value::closure(insn.clone()));
                 }
@@ -111,15 +117,20 @@ impl VM {
                 }
                 Insn::Return => {
                     // f arg1 arg2 ret_val sp
+                    let top = pop(&mut stk)?;
                     stk.truncate(frame.base);
+                    stk.push(top);
                     ip = frame.ip_prev;
                     frame = prev_frame(&mut frames);
                 }
+                Insn::GetUpValue(_) => todo!(),
+                Insn::SetUpValue(_) => todo!(),
             }
             ip = unsafe { ip.add(1) };
         }
     }
 }
+
 #[inline]
 fn pop(stk: &mut Vec<Value>) -> anyhow::Result<Value> {
     stk.pop().context("stack is empty")

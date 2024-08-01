@@ -21,11 +21,11 @@ pub enum Insn {
     SetGlobal(String),
     GetLocal(usize),
     SetLocal(usize),
-
+    GetUpValue(usize),
+    SetUpValue(usize),
     MkClosure(Vec<Insn>),
 
     Print,
     Exit,
-    Halt,
     Return,
 }

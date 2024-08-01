@@ -1,4 +1,6 @@
+use std::collections::LinkedList;
 use std::fs::File;
+use std::vec;
 
 use crate::ast::*;
 use crate::insn::*;
@@ -10,10 +12,13 @@ use std::io::Read;
 // Compiler構造体はランタイムの状態を持たない
 // コンパイル途中にエラーが起こると状態の整合を取るのが面倒だから
 
-pub struct Compiler {
+pub struct Compiler<'a> {
+    cur: ScopeCompiler<'a>,
+    par: LinkedList<ScopeCompiler<'a>>,
+}
+struct ScopeCompiler<'a> {
     insn: Vec<Insn>,
-    local_vars: Vec<String>,
-    parent: Option<Box<Compiler>>,
+    local_vars: Vec<&'a str>,
 }
 #[derive(Debug, Clone, Copy)]
 enum VariableType {
@@ -21,89 +26,96 @@ enum VariableType {
     Upvalue { from_cur: usize, index: usize },
     Global,
 }
-impl Compiler {
-    pub fn new() -> Self {
+impl<'a> ScopeCompiler<'a> {
+    fn new() -> Self {
         Self {
             insn: vec![],
             local_vars: vec![],
-            parent: None,
         }
     }
-    pub fn compile(&mut self, ast: &SExp) -> anyhow::Result<Vec<Insn>> {
-        let mut ret = vec![];
-        self.compile_toplevel(ast)?;
-        std::mem::swap(&mut ret, &mut self.insn);
-        Ok(ret)
+}
+
+impl<'a> Compiler<'a> {
+    pub fn new() -> Self {
+        Self {
+            cur: ScopeCompiler::new(),
+            par: LinkedList::new(),
+        }
     }
-    fn compile_toplevel(&mut self, sexp: &SExp) -> anyhow::Result<()> {
-        assert!(self.insn.is_empty());
+    pub fn compile(self, ast: &'a SExp) -> anyhow::Result<Vec<Insn>> {
+        let mut insn = self.compile_toplevel(ast)?;
+        insn.push(Insn::Exit);
+        Ok(insn)
+    }
+
+    fn compile_toplevel(mut self, sexp: &'a SExp) -> anyhow::Result<Vec<Insn>> {
         match sexp {
             SExp::Id(id) => {
                 self.compile_exp_id(&id)?;
-                self.insn.push(Insn::Exit);
-                Ok(())
+                self.emit_insn(Insn::Print);
+                Ok(self.get_bytecode())
             }
             SExp::SList(slist) => match &slist[..] {
                 [] => {
-                    self.insn.push(Insn::Nil);
-                    Ok(())
+                    self.emit_insn(Insn::Nil);
+                    self.emit_insn(Insn::Print);
+                    Ok(self.get_bytecode())
                 }
                 [SExp::Id(Id::Id("define")), ..] => {
                     self.compile_define(slist, false)?;
-                    self.insn.push(Insn::NoneValue);
-                    self.insn.push(Insn::Exit);
-                    Ok(())
+                    Ok(self.get_bytecode())
                 }
                 [SExp::Id(Id::Id("load")), ..] => {
-                    self.compile_load(slist)?;
-                    self.insn.push(Insn::NoneValue);
-                    self.insn.push(Insn::Exit);
-                    Ok(())
+                    let fname = Self::expect_1_arg(&slist[..])?;
+                    let fname = Self::expect_id(fname)?;
+
+                    let content = Self::read_to_string(fname)?;
+                    let tkn = Token::from_str(&content)?;
+                    let asts = parse_many(tkn)?;
+                    let mut cmp = self;
+                    for ast in &asts {
+                        let insn = cmp.compile_toplevel(ast)?;
+                        cmp = Compiler::new();
+                        cmp.cur.insn = insn;
+                    }
+                    Ok(cmp.get_bytecode())
                 }
                 _ => {
                     self.compile_exp(sexp)?;
-                    self.insn.push(Insn::Exit);
-                    Ok(())
+                    self.emit_insn(Insn::Print);
+                    Ok(self.get_bytecode())
                 }
             },
         }
     }
 
-    fn compile_define(&mut self, lst: &Vec<SExp>, is_local: bool) -> anyhow::Result<()> {
+    fn compile_define(&mut self, lst: &'a Vec<SExp>, is_local: bool) -> anyhow::Result<()> {
         assert!(lst.len() != 0 && matches!(&lst[0], SExp::Id(Id::Id("define"))));
         match &lst[..] {
             [] | [_] | [_, _] => bail!("[define] invalid numer of argument"),
             [_, SExp::Id(Id::Id(id)), exp] => {
                 self.compile_exp(exp)?;
-                self.insn.push(Insn::NewGlobal(id.to_string()));
+                self.emit_insn(Insn::NewGlobal(id.to_string()));
 
                 Ok(())
             }
-            _ => {
-                let id = &lst[1];
-                match id {
-                    SExp::SList(slist) => {
-                        let n = slist.len();
-
-                        if n == 0 {
-                            bail!("[define-lambda] function name is not specified")
-                        }
-                        let fname = Self::expect_id(&slist[0])?;
-                        for arg in &slist[1..] {
-                            let argname = Self::expect_id(arg)?;
-                            self.local_vars.push(argname.to_string());
-                        }
-                        let body = self.compile_func_body(&lst[2..])?;
-                        for _ in 0..n - 1 {
-                            self.local_vars.pop().unwrap();
-                        }
-                        self.insn.push(Insn::MkClosure(body));
-                        if is_local {
-                            self.local_vars.push(fname.to_string());
-                            Ok(())
-                        } else {
-                            self.insn.push(Insn::NewGlobal(fname.to_string()));
-                            Ok(())
+            [_, f_arg, body @ ..] => {
+                match f_arg {
+                    SExp::SList(f_arg) => {
+                        // (define (??) body)
+                        match &f_arg[..] {
+                            [] => bail!("[define-lambda] function name is not specified"),
+                            [f, arg @ ..] => {
+                                let f = Self::expect_id(f)?;
+                                let insn = self.compile_func(f, arg, body)?;
+                                self.emit_insn(Insn::MkClosure(insn));
+                                if !is_local {
+                                    self.emit_insn(Insn::NewGlobal(f.to_string()));
+                                } else {
+                                    self.push_local(f)
+                                }
+                                Ok(())
+                            }
                         }
                     }
                     SExp::Id(_) => bail!("[define-lambda] invalid format"),
@@ -111,18 +123,24 @@ impl Compiler {
             }
         }
     }
-    // TODO : resolve upvalue
-    fn compile_func_body(&mut self, lst: &[SExp]) -> anyhow::Result<Vec<Insn>> {
-        let mut tmp = vec![];
-        std::mem::swap(&mut tmp, &mut self.insn);
-        self.compile_body(lst)?;
-        std::mem::swap(&mut tmp, &mut self.insn);
-        Ok(tmp)
+
+    fn compile_func(
+        &mut self,
+        fname: &'a str,
+        arg: &'a [SExp],
+        body: &'a [SExp],
+    ) -> anyhow::Result<Vec<Insn>> {
+        self.new_frame();
+        self.push_local(fname);
+        for arg in arg {
+            self.push_local(Self::expect_id(arg)?);
+        }
+        self.compile_body(body)?;
+        self.emit_insn(Insn::Return);
+        let cmp = self.pop_frame().unwrap();
+        Ok(cmp.insn)
     }
-    fn compile_func(&mut self, fname: &str, arg: &[SExp]) {
-        todo!()
-    }
-    fn compile_body(&mut self, lst: &[SExp]) -> anyhow::Result<()> {
+    fn compile_body(&mut self, lst: &'a [SExp]) -> anyhow::Result<()> {
         let n = lst.len();
         if lst.len() == 0 {
             bail!("[body] no body")
@@ -136,22 +154,6 @@ impl Compiler {
             self.compile_exp(&lst[n - 1])
         }
     }
-    fn compile_load(&mut self, lst: &Vec<SExp>) -> anyhow::Result<()> {
-        assert!(lst.len() != 0 && matches!(&lst[0], SExp::Id(Id::Id("load"))));
-        let fname = Self::expect_1_arg(&lst[..])?;
-        let fname = match fname {
-            SExp::Id(Id::Id(s)) => s,
-            _ => bail!("[load] expected file name, found {:?}", fname),
-        };
-        println!("loading {}", fname);
-        let content = Self::read_to_string(fname)?;
-        let tkn = Token::from_str(&content)?;
-        let asts = parse_many(tkn)?;
-        for ast in &asts {
-            self.compile_toplevel(ast)?;
-        }
-        Ok(())
-    }
 
     fn compile_exp_id(&mut self, id: &Id) -> anyhow::Result<()> {
         match id {
@@ -161,35 +163,44 @@ impl Compiler {
                     VariableType::Local(i) => Insn::GetLocal(i),
                     VariableType::Upvalue { .. } => todo!(),
                 };
-                self.insn.push(insn);
+                self.emit_insn(insn);
                 Ok(())
             }
             Id::StrLiteral(_) => todo!(),
             Id::Num(i) => {
-                self.insn.push(Insn::Int(*i));
+                self.emit_insn(Insn::Int(*i));
                 Ok(())
             }
             Id::Bool(b) => {
-                self.insn.push(if *b { Insn::True } else { Insn::False });
+                self.emit_insn(if *b { Insn::True } else { Insn::False });
                 Ok(())
             }
         }
     }
-    fn compile_exp(&mut self, s: &SExp) -> anyhow::Result<()> {
+    fn compile_exp(&mut self, s: &'a SExp) -> anyhow::Result<()> {
         match s {
             SExp::Id(id) => self.compile_exp_id(id),
             SExp::SList(sexps) => {
                 if sexps.len() == 0 {
-                    self.insn.push(Insn::Nil);
+                    self.emit_insn(Insn::Nil);
                     return Ok(());
                 }
                 match &sexps[0] {
                     SExp::Id(Id::Bool(_) | Id::Num(_) | Id::StrLiteral(_)) => {
                         bail!("[exp] invalid format")
                     }
-                    SExp::Id(Id::Id("lambda")) => {
-                        todo!()
-                    }
+                    SExp::Id(Id::Id("lambda")) => match &sexps[1..] {
+                        [] | [_] => bail!("[lambda] invalid number of argument"),
+                        [arg, ..] => match arg {
+                            SExp::Id(_) => {
+                                let fname = Self::expect_id(arg)?;
+                                let insn = self.compile_func(fname, &[], &sexps[2..])?;
+                                self.emit_insn(Insn::MkClosure(insn));
+                                Ok(())
+                            }
+                            SExp::SList(_) => todo!(),
+                        },
+                    },
                     SExp::Id(Id::Id("'")) | SExp::Id(Id::Id("quote")) => {
                         todo!()
                     }
@@ -197,19 +208,19 @@ impl Compiler {
                         let (car, cdr) = Self::expect_2_arg(&sexps[..])?;
                         self.compile_exp(car)?;
                         self.compile_exp(cdr)?;
-                        self.insn.push(Insn::Cons);
+                        self.emit_insn(Insn::Cons);
                         Ok(())
                     }
                     SExp::Id(Id::Id("car")) => {
                         let lst = Self::expect_1_arg(&sexps[..])?;
                         self.compile_exp(lst)?;
-                        self.insn.push(Insn::Car);
+                        self.emit_insn(Insn::Car);
                         Ok(())
                     }
                     SExp::Id(Id::Id("cdr")) => {
                         let lst = Self::expect_1_arg(&sexps[..])?;
                         self.compile_exp(lst)?;
-                        self.insn.push(Insn::Cdr);
+                        self.emit_insn(Insn::Cdr);
                         Ok(())
                     }
                     SExp::Id(Id::Id("set!")) => {
@@ -219,9 +230,11 @@ impl Compiler {
                         let insn = match Self::resolve_variable(&self, id) {
                             VariableType::Local(i) => Insn::SetLocal(i),
                             VariableType::Global => Insn::SetGlobal(id.to_string()),
-                            VariableType::Upvalue { .. } => todo!(),
+                            VariableType::Upvalue { from_cur, index } => {
+                                Insn::SetUpValue(self.to_upvalue_index(from_cur, index))
+                            }
                         };
-                        self.insn.push(insn);
+                        self.emit_insn(insn);
                         Ok(())
                     }
                     SExp::Id(Id::Id("+")) => match &sexps[1..] {
@@ -231,22 +244,23 @@ impl Compiler {
                             self.compile_exp(fst)?;
                             for e in &sexps[2..] {
                                 self.compile_exp(e)?;
-                                self.insn.push(Insn::Add);
+                                self.emit_insn(Insn::Add);
                             }
                             Ok(())
                         }
                     },
                     SExp::Id(Id::Id(id)) => {
-                        for i in 1..sexps.len() {
-                            self.compile_exp(&sexps[i])?;
-                        }
                         let insn = match self.resolve_variable(*id) {
                             VariableType::Global => Insn::GetGlobal(id.to_string()),
                             VariableType::Local(i) => Insn::GetLocal(i),
-                            VariableType::Upvalue { .. } => todo!(),
+                            VariableType::Upvalue { .. } => todo!(), //関数呼び出しかつクロージャ
                         };
-                        self.insn.push(insn);
-                        self.insn.push(Insn::Call(sexps.len() - 1));
+                        self.emit_insn(insn);
+                        for i in 1..sexps.len() {
+                            self.compile_exp(&sexps[i])?;
+                        }
+
+                        self.emit_insn(Insn::Call(sexps.len() - 1));
                         Ok(())
                     }
                     e => bail!("exp {:?} is not implemented yet", e),
@@ -254,20 +268,43 @@ impl Compiler {
             }
         }
     }
-    fn expect_id<'b>(sexp: &'b SExp) -> anyhow::Result<&'b str> {
+    fn emit_insn(&mut self, insn: Insn) {
+        self.cur.insn.push(insn)
+    }
+    fn push_local(&mut self, s: &'a str) {
+        self.cur.local_vars.push(s)
+    }
+    fn get_bytecode(self) -> Vec<Insn> {
+        self.cur.insn
+    }
+    fn new_frame(&mut self) {
+        let mut cur = ScopeCompiler::new();
+        std::mem::swap(&mut cur, &mut self.cur);
+        self.par.push_front(cur);
+    }
+    fn pop_frame(&mut self) -> Option<ScopeCompiler> {
+        match self.par.pop_front() {
+            None => None,
+            Some(mut cmp) => {
+                std::mem::swap(&mut cmp, &mut self.cur);
+                Some(cmp)
+            }
+        }
+    }
+    fn expect_id<'c>(sexp: &'c SExp) -> anyhow::Result<&'c str> {
         match sexp {
             SExp::Id(Id::Id(id)) => Ok(id),
             _ => bail!("expect id, found {:?}", sexp),
         }
     }
 
-    fn expect_1_arg<'b, 'c>(arg: &'b [SExp<'c>]) -> anyhow::Result<&'b SExp<'c>> {
+    fn expect_1_arg<'c, 'd>(arg: &'c [SExp<'d>]) -> anyhow::Result<&'c SExp<'c>> {
         match arg {
             [_, x] => Ok(x),
             _ => bail!("expect 1 argument, found {}.", arg.len()),
         }
     }
-    fn expect_2_arg<'b, 'c>(arg: &'b [SExp<'c>]) -> anyhow::Result<(&'b SExp<'c>, &'b SExp<'c>)> {
+    fn expect_2_arg<'c, 'd>(arg: &'c [SExp<'d>]) -> anyhow::Result<(&'c SExp<'d>, &'c SExp<'d>)> {
         match arg {
             [_, x, y] => Ok((x, y)),
             _ => bail!("expect 1 argument, found {}.", arg.len()),
@@ -282,25 +319,24 @@ impl Compiler {
         Ok(contents)
     }
     fn resolve_variable(&self, id: &str) -> VariableType {
-        for i in (0..self.local_vars.len()).rev() {
-            if self.local_vars[i] == id {
+        for i in (0..self.cur.local_vars.len()).rev() {
+            if self.cur.local_vars[i] == id {
                 return VariableType::Local(i);
             }
         }
-        let mut f = &self.parent;
-        let mut cnt = 1;
-        while let Some(frame) = f {
-            for i in (0..frame.local_vars.len()).rev() {
-                if frame.local_vars[i] == id {
+        for (cmp_i, cmp) in self.par.iter().enumerate() {
+            for local_i in (0..cmp.local_vars.len()).rev() {
+                if cmp.local_vars[local_i] == id {
                     return VariableType::Upvalue {
-                        from_cur: cnt,
-                        index: i,
+                        from_cur: cmp_i + 1,
+                        index: local_i,
                     };
                 }
             }
-            cnt += 1;
-            f = &frame.parent;
         }
         VariableType::Global
+    }
+    fn to_upvalue_index(&self, _frame_index: usize, _var_index: usize) -> usize {
+        todo!()
     }
 }

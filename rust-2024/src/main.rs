@@ -21,23 +21,19 @@ fn main() -> anyhow::Result<()> {
             continue;
         }
         match repl.interpret(&s) {
-            std::result::Result::Ok(res) => println!("{}", res),
+            std::result::Result::Ok(()) => println!("[OK]"),
             Err(msg) => println!("{}", msg),
         }
     }
 }
 struct Interpreter {
-    cmp: Compiler,
     vm: VM,
 }
 impl Interpreter {
     fn new() -> Self {
-        Self {
-            cmp: Compiler::new(),
-            vm: VM::new(),
-        }
+        Self { vm: VM::new() }
     }
-    fn interpret(&mut self, input: &str) -> anyhow::Result<String> {
+    fn interpret(&mut self, input: &str) -> anyhow::Result<()> {
         println!("----------------------------");
         println!("input: {}", input.trim());
         let tkn = Token::from_str(&input)?;
@@ -46,7 +42,8 @@ impl Interpreter {
         println!("----------------------------");
         let sexp = parse(tkn)?;
         println!("{:?}", sexp);
-        let insn = self.cmp.compile(&sexp)?;
+        let cmp = Compiler::new();
+        let insn = cmp.compile(&sexp)?;
         println!("----------------------------");
         println!("{:?}", insn);
         let res = self.vm.exec(insn)?;
