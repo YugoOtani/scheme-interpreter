@@ -49,6 +49,8 @@ impl<'a> Compiler<'a> {
     }
 
     fn compile_toplevel(mut self, sexp: &'a SExp) -> anyhow::Result<Vec<Insn>> {
+        assert!(self.cur.local_vars.is_empty());
+        assert!(self.par.is_empty());
         match sexp {
             SExp::Id(id) => {
                 self.compile_exp_id(&id)?;
@@ -135,6 +137,7 @@ impl<'a> Compiler<'a> {
         for arg in arg {
             self.push_local(Self::expect_id(arg)?);
         }
+        println!("{:?}", self.cur.local_vars);
         self.compile_body(body)?;
         self.emit_insn(Insn::Return);
         let cmp = self.pop_frame().unwrap();
@@ -191,14 +194,23 @@ impl<'a> Compiler<'a> {
                     }
                     SExp::Id(Id::Id("lambda")) => match &sexps[1..] {
                         [] | [_] => bail!("[lambda] invalid number of argument"),
-                        [arg, ..] => match arg {
+                        [arg, body @ ..] => match arg {
                             SExp::Id(_) => {
-                                let fname = Self::expect_id(arg)?;
-                                let insn = self.compile_func(fname, &[], &sexps[2..])?;
+                                // (lambda x (+ x 1))
+                                let fname = "";
+                                let insn = self.compile_func(fname, &sexps[1..2], &sexps[2..])?;
                                 self.emit_insn(Insn::MkClosure(insn));
                                 Ok(())
                             }
-                            SExp::SList(_) => todo!(),
+                            SExp::SList(arg) => match &arg[..] {
+                                // (lambda (x y) (+ x y))
+                                [] => bail!("[lambda] invalid number of argument"),
+                                [..] => {
+                                    let insn = self.compile_func("", arg, body)?;
+                                    self.emit_insn(Insn::MkClosure(insn));
+                                    Ok(())
+                                }
+                            },
                         },
                     },
                     SExp::Id(Id::Id("'")) | SExp::Id(Id::Id("quote")) => {
