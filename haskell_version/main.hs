@@ -13,27 +13,6 @@ import Control.Exception
 import System.IO
 import Control.DeepSeq
 
-{-
-メモ
-
-・ ポインタがないので、eq?による比較が実装しづらい
--> 変数に固有のidをつける 
-    ・ 変数定義時にidをつける
-    ・ HashMap Pointer Value
-    （効率は悪そう）
-
-・ あるフレームは子フレームとクロージャの両方から参照される可能性があるが、
-子フレームによりフレームが変更された場合、その変更をクロージャが検出できない(immutableなので)[<- 未解決]
-
--> 各フレームについて、そのフレームを参照する変数を記録しておく(面倒そう)
-
--> モナドのインスタンスにできないか？
-
-・ 評価は input -> (heap,env) -> Either Err ((heap,env), result) なので Stateモナドのインスタンスにできそう
-
-
--}
-
 
 main = do
     loop 1 initialCtx where
