@@ -205,24 +205,18 @@ impl<'a> Compiler<'a> {
                     [SExp::Id(Id::Id("lambda")), var_exp @ ..] => {
                         match var_exp {
                             [] | [_] => bail!("[lambda] invalid number of argument"),
-                            [arg, body @ ..] => match arg {
+                            [var, body @ ..] => match var {
                                 SExp::Id(_) => {
                                     // (lambda x (+ x 1))
-                                    let fname = "";
-                                    let insn =
-                                        self.compile_func(fname, &sexps[1..2], &sexps[2..])?;
+                                    let insn = self.compile_func("", &var_exp[0..1], body)?;
                                     self.emit_insn(Insn::MkClosure(insn));
                                     Ok(())
                                 }
-                                SExp::SList(arg) => match &arg[..] {
-                                    // (lambda (x y) (+ x y))
-                                    [] => bail!("[lambda] invalid number of argument"),
-                                    [..] => {
-                                        let insn = self.compile_func("", arg, body)?;
-                                        self.emit_insn(Insn::MkClosure(insn));
-                                        Ok(())
-                                    }
-                                },
+                                SExp::SList(param) => {
+                                    let insn = self.compile_func("", param, body)?;
+                                    self.emit_insn(Insn::MkClosure(insn));
+                                    Ok(())
+                                }
                             },
                         }
                     }
@@ -280,9 +274,9 @@ impl<'a> Compiler<'a> {
                     [SExp::Id(Id::Id("+")), arg @ ..] => match arg {
                         [] => bail!("[+] expected one or more arguments"),
                         [e] => self.compile_exp(e),
-                        [fst, ..] => {
-                            self.compile_exp(fst)?;
-                            for e in &sexps[2..] {
+                        [head, tail @ ..] => {
+                            self.compile_exp(head)?;
+                            for e in tail {
                                 self.compile_exp(e)?;
                                 self.emit_insn(Insn::Add);
                             }
