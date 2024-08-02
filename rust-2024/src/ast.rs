@@ -1,3 +1,4 @@
+use anyhow::bail;
 use regex::Regex;
 use std::fmt::{Debug, Display};
 #[derive(Clone, PartialEq, Eq)]
@@ -42,6 +43,12 @@ impl<'a> Id<'a> {
             None
         }
     }
+    pub fn expect_id(&self) -> anyhow::Result<&str> {
+        match self {
+            Id::Id(id) => Ok(id),
+            _ => bail!("expect identifier, found {:?}", self),
+        }
+    }
 }
 #[test]
 fn from_str_test() {
@@ -67,6 +74,14 @@ impl Debug for SExp<'_> {
                 }
                 Ok(())
             }
+        }
+    }
+}
+impl<'a> SExp<'a> {
+    pub fn expect_id(&self) -> anyhow::Result<&str> {
+        match self {
+            SExp::Id(Id::Id(s)) => Ok(s),
+            _ => bail!("expect identifier, found {:?}", self),
         }
     }
 }
