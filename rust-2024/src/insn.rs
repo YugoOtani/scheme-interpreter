@@ -26,9 +26,14 @@ pub enum Insn {
     SetLocal(usize),
     GetUpValue(usize),
     SetUpValue(usize),
-    MkClosure(Vec<Insn>),
+    PushClosure(Box<(Vec<Insn>, usize)>),
 
     Print,
     Exit,
     Return,
+}
+impl Insn {
+    pub fn push_closure(insn: Vec<Insn>, arity: usize) -> Insn {
+        Self::PushClosure(Box::new((insn, arity)))
+    }
 }

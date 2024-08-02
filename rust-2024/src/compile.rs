@@ -5,6 +5,7 @@ use std::vec;
 use crate::ast::*;
 use crate::insn::*;
 use crate::parser::parse_many;
+use crate::scheme_value::Closure;
 use crate::token::Token;
 use anyhow::*;
 use std::io::Read;
@@ -118,8 +119,8 @@ impl<'a> Compiler<'a> {
                         (f, param)
                     }
                 };
-                let insn = self.compile_func(f, param, val)?;
-                self.emit_insn(Insn::MkClosure(insn));
+                let (_, insn, arity) = self.compile_func(f, param, val)?;
+                self.emit_insn(Insn::push_closure(insn, arity));
                 if is_local {
                     self.push_local(f)
                 } else {
@@ -133,18 +134,18 @@ impl<'a> Compiler<'a> {
     fn compile_func(
         &mut self,
         fname: &'a str,
-        arg: &'a [SExp],
+        param: &'a [SExp],
         body: &'a [SExp],
-    ) -> anyhow::Result<Vec<Insn>> {
+    ) -> anyhow::Result<Closure> {
         self.new_frame();
         self.push_local(fname);
-        for arg in arg {
-            self.push_local(SExp::expect_id(arg)?);
+        for prm in param {
+            self.push_local(SExp::expect_id(prm)?);
         }
         self.compile_body(body)?;
         self.emit_insn(Insn::Return);
         let cmp = self.pop_frame().unwrap();
-        Ok(cmp.insn)
+        Ok((vec![], cmp.insn, param.len()))
     }
     fn compile_body(&mut self, lst: &'a [SExp]) -> anyhow::Result<()> {
         let n = lst.len();
@@ -208,13 +209,14 @@ impl<'a> Compiler<'a> {
                             [var, body @ ..] => match var {
                                 SExp::Id(_) => {
                                     // (lambda x (+ x 1))
-                                    let insn = self.compile_func("", &var_exp[0..1], body)?;
-                                    self.emit_insn(Insn::MkClosure(insn));
+                                    let (_, insn, arity) =
+                                        self.compile_func("", &var_exp[0..1], body)?;
+                                    self.emit_insn(Insn::push_closure(insn, arity));
                                     Ok(())
                                 }
                                 SExp::SList(param) => {
-                                    let insn = self.compile_func("", param, body)?;
-                                    self.emit_insn(Insn::MkClosure(insn));
+                                    let (_, insn, arity) = self.compile_func("", param, body)?;
+                                    self.emit_insn(Insn::push_closure(insn, arity));
                                     Ok(())
                                 }
                             },

@@ -16,9 +16,10 @@ pub enum Value {
     Cons(Ptr<Cons>),
     Closure(Ptr<Closure>),
 }
-type Ptr<T> = Gc<GcCell<T>>;
-type Closure = (Vec<Value>, Vec<Insn>);
-type Cons = (Value, Value);
+pub type Ptr<T> = Gc<GcCell<T>>;
+pub type Closure = (Vec<Value>, Vec<Insn>, Arity);
+pub type Cons = (Value, Value);
+pub type Arity = usize;
 
 impl Default for Value {
     fn default() -> Self {
@@ -32,8 +33,8 @@ impl Value {
     pub fn cons(a: Self, b: Self) -> Self {
         Self::Cons(Self::ptr((a, b)))
     }
-    pub fn closure(insn: Vec<Insn>) -> Self {
-        Self::Closure(Self::ptr((vec![], insn)))
+    pub fn closure(insn: Vec<Insn>, arity: usize) -> Self {
+        Self::Closure(Self::ptr((vec![], insn, arity)))
     }
     pub fn string(s: String) -> Self {
         Self::String(Self::ptr(s))
@@ -90,6 +91,9 @@ impl Value {
     }
     pub fn insn_ptr(closure: &Ptr<Closure>) -> *const Insn {
         closure.as_ref().borrow().deref().1.as_ptr() as *const Insn
+    }
+    pub fn arity(closure: &Ptr<Closure>) -> usize {
+        closure.as_ref().borrow().2
     }
     pub fn car(cons: &Ptr<Cons>) -> Value {
         cons.as_ref().borrow().deref().0.clone()

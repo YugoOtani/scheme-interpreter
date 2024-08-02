@@ -47,7 +47,10 @@ impl<'a> Tokens<'a> {
                 let mut lst = vec![];
                 loop {
                     match self.peek() {
-                        Some(Token::Close) | None => {
+                        None => {
+                            bail!("unexpected end of token")
+                        }
+                        Some(Token::Close) => {
                             self.next();
                             break;
                         }

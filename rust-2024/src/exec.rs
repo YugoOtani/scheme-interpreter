@@ -116,14 +116,20 @@ impl VM {
                     Insn::Exit => {
                         return Ok(());
                     }
-                    Insn::MkClosure(insn) => {
-                        stk.push(Value::closure(insn.clone()));
+                    Insn::PushClosure(closure) => {
+                        let (insn, arity) = &**closure;
+                        stk.push(Value::closure(insn.clone(), *arity));
                     }
                     Insn::Call(nargs) => {
                         // | f arg1 arg2 .. sp
                         let base = stk.len() - nargs - 1;
                         frame = new_frame(&mut frames, base, ip);
-                        ip = Value::insn_ptr(stk[base].as_closure()?).cast_mut();
+                        let closure = stk[base].as_closure()?;
+                        let arity = Value::arity(closure);
+                        if arity != *nargs {
+                            bail!("expect {arity} argument, found {nargs}")
+                        }
+                        ip = Value::insn_ptr(closure).cast_mut();
                     }
                     Insn::Return => {
                         // f arg1 arg2 ret_val sp
