@@ -1,6 +1,6 @@
 use anyhow::*;
 use gc::*;
-use std::ops::Deref;
+use std::{borrow::Borrow, ops::Deref};
 
 use crate::insn::Insn;
 
@@ -12,13 +12,14 @@ pub enum Value {
     Int(i64),
     True,
     False,
-    Ptr(Gc<GcCell<Object>>),
+    String(Ptr<String>),
+    Cons(Ptr<Cons>),
+    Closure(Ptr<Closure>),
 }
-#[derive(Debug, Clone, PartialEq, Eq, Trace, Finalize)]
-pub enum Object {
-    Cons(Value, Value),
-    Closure(Vec<Value>, Vec<Insn>),
-}
+type Ptr<T> = Gc<GcCell<T>>;
+type Closure = (Vec<Value>, Vec<Insn>);
+type Cons = (Value, Value);
+
 impl Default for Value {
     fn default() -> Self {
         Self::Nil
@@ -29,12 +30,13 @@ impl Value {
         Gc::new(GcCell::new(t))
     }
     pub fn cons(a: Self, b: Self) -> Self {
-        let tmp = Object::Cons(a, b);
-        Self::Ptr(Self::ptr(tmp))
+        Self::Cons(Self::ptr((a, b)))
     }
     pub fn closure(insn: Vec<Insn>) -> Self {
-        let tmp = Object::Closure(vec![], insn);
-        Self::Ptr(Self::ptr(tmp))
+        Self::Closure(Self::ptr((vec![], insn)))
+    }
+    pub fn string(s: String) -> Self {
+        Self::String(Self::ptr(s))
     }
     pub fn type_name(&self) -> &'static str {
         match self {
@@ -44,10 +46,9 @@ impl Value {
             Value::Int(_) => "int",
             Value::True => "bool",
             Value::False => "bool",
-            Value::Ptr(obj) => match &*obj.as_ref().borrow().deref() {
-                Object::Closure(..) => "closure",
-                Object::Cons(..) => "pair",
-            },
+            Value::Closure(..) => "closure",
+            Value::Cons(..) => "pair",
+            Value::String(..) => "string",
         }
     }
     pub fn as_bool(&self) -> anyhow::Result<bool> {
@@ -75,26 +76,32 @@ impl Value {
             _ => bail!("expected nil, found {}", self.type_name()),
         }
     }
-    pub fn as_cons(&self) -> anyhow::Result<(Value, Value)> {
+    pub fn as_cons(&self) -> anyhow::Result<&Ptr<Cons>> {
         match self {
-            Value::Ptr(obj) => match obj.as_ref().borrow().deref() {
-                Object::Cons(a, b) => Ok((a.clone(), b.clone())),
-                Object::Closure(..) => bail!("expected pair, found closure"),
-            },
+            Value::Cons(cell) => Ok(cell),
             _ => bail!("expected pair, found {}", self.type_name()),
         }
     }
-    pub fn as_closure(&self) -> anyhow::Result<*mut Insn> {
+    pub fn as_closure(&self) -> anyhow::Result<&Ptr<Closure>> {
         match self {
-            Value::Ptr(obj) => {
-                let tmp = obj.borrow();
-                match &*tmp {
-                    Object::Closure(_, ref b) => Ok(b.as_ptr().cast_mut()),
-                    Object::Cons(..) => bail!("expected closure, found pair"),
-                }
-            }
+            Value::Closure(obj) => Ok(obj),
             e => bail!("expected pair, found {}", e.type_name()),
         }
+    }
+    pub fn insn_ptr(closure: &Ptr<Closure>) -> *const Insn {
+        closure.as_ref().borrow().deref().1.as_ptr() as *const Insn
+    }
+    pub fn car(cons: &Ptr<Cons>) -> Value {
+        cons.as_ref().borrow().deref().0.clone()
+    }
+    pub fn cdr(cons: &Ptr<Cons>) -> Value {
+        cons.as_ref().borrow().deref().1.clone()
+    }
+    pub fn set_car(cons: &Ptr<Cons>, new_car: Value) {
+        cons.borrow_mut().0 = new_car
+    }
+    pub fn set_cdr(cons: &Ptr<Cons>, new_cdr: Value) {
+        cons.borrow_mut().1 = new_cdr
     }
 }
 impl ToString for Value {
@@ -106,12 +113,12 @@ impl ToString for Value {
             Value::Int(i) => i.to_string(),
             Value::True => "#t".to_string(),
             Value::False => "#f".to_string(),
-            Value::Ptr(obj) => match &*obj.as_ref().borrow() {
-                Object::Closure(..) => "#<closure>".to_string(),
-                Object::Cons(o1, o2) => {
-                    format!("({} {})", o1.to_string(), o2.to_string())
-                }
-            },
+            Value::Closure(..) => "#<procedure>".to_string(),
+            Value::String(s) => s.as_ref().borrow().borrow().to_string(),
+            Value::Cons(cell) => {
+                let (car, cdr) = &*cell.as_ref().borrow();
+                format!("({} {})", car.to_string(), cdr.to_string())
+            }
         }
     }
 }

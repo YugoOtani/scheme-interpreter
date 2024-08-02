@@ -60,9 +60,17 @@ impl VM {
                         let v1 = pop(&mut stk)?.as_int()?;
                         stk.push(Value::Int(v0 + v1))
                     }
-                    Insn::Sub => todo!(),
-                    Insn::Mul => todo!(),
-
+                    Insn::Sub => {
+                        let v0 = pop(&mut stk)?.as_int()?;
+                        let v1 = pop(&mut stk)?.as_int()?;
+                        stk.push(Value::Int(v0 - v1))
+                    }
+                    Insn::Mul => {
+                        let v0 = pop(&mut stk)?.as_int()?;
+                        let v1 = pop(&mut stk)?.as_int()?;
+                        stk.push(Value::Int(v0 * v1))
+                    }
+                    Insn::PushStr(s) => stk.push(Value::string(s.to_string())),
                     Insn::Cons => {
                         let cdr = pop(&mut stk)?;
                         let car = pop(&mut stk)?;
@@ -70,13 +78,11 @@ impl VM {
                     }
                     Insn::Car => {
                         let lst = pop(&mut stk)?;
-                        let (car, _) = lst.as_cons()?;
-                        stk.push(car);
+                        stk.push(Value::car(lst.as_cons()?));
                     }
                     Insn::Cdr => {
                         let lst = pop(&mut stk)?;
-                        let (_, cdr) = lst.as_cons()?;
-                        stk.push(cdr);
+                        stk.push(Value::cdr(lst.as_cons()?));
                     }
                     Insn::NewGlobal(id) => {
                         let t = pop(&mut stk)?;
@@ -117,7 +123,7 @@ impl VM {
                         // | f arg1 arg2 .. sp
                         let base = stk.len() - nargs - 1;
                         frame = new_frame(&mut frames, base, ip);
-                        ip = stk[base].as_closure()?;
+                        ip = Value::insn_ptr(stk[base].as_closure()?).cast_mut();
                     }
                     Insn::Return => {
                         // f arg1 arg2 ret_val sp
@@ -129,6 +135,18 @@ impl VM {
                     }
                     Insn::GetUpValue(_) => todo!(),
                     Insn::SetUpValue(_) => todo!(),
+                    Insn::SetCar => {
+                        let car = pop(&mut stk)?;
+                        let cons = pop(&mut stk)?;
+                        let cons = cons.as_cons()?;
+                        Value::set_car(cons, car)
+                    }
+                    Insn::SetCdr => {
+                        let cdr = pop(&mut stk)?;
+                        let cons = pop(&mut stk)?;
+                        let cons = cons.as_cons()?;
+                        Value::set_cdr(cons, cdr)
+                    }
                 }
             }
         }

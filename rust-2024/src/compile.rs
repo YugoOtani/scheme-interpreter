@@ -11,6 +11,7 @@ use std::io::Read;
 
 // Compiler構造体はランタイムの状態を持たない
 // コンパイル途中にエラーが起こると状態の整合を取るのが面倒だから
+// 複数のクロージャが同じupvalueを参照する場合
 
 pub struct Compiler<'a> {
     cur: ScopeCompiler<'a>,
@@ -97,8 +98,11 @@ impl<'a> Compiler<'a> {
             [] | [_] | [_, _] => bail!("[define] invalid numer of argument"),
             [_, SExp::Id(Id::Id(id)), exp] => {
                 self.compile_exp(exp)?;
-                self.emit_insn(Insn::NewGlobal(id.to_string()));
-
+                if is_local {
+                    self.push_local(id)
+                } else {
+                    self.emit_insn(Insn::NewGlobal(id.to_string()));
+                }
                 Ok(())
             }
             [_, f_arg, body @ ..] => {
@@ -111,10 +115,10 @@ impl<'a> Compiler<'a> {
                                 let f = Self::expect_id(f)?;
                                 let insn = self.compile_func(f, arg, body)?;
                                 self.emit_insn(Insn::MkClosure(insn));
-                                if !is_local {
-                                    self.emit_insn(Insn::NewGlobal(f.to_string()));
-                                } else {
+                                if is_local {
                                     self.push_local(f)
+                                } else {
+                                    self.emit_insn(Insn::NewGlobal(f.to_string()));
                                 }
                                 Ok(())
                             }
@@ -247,6 +251,23 @@ impl<'a> Compiler<'a> {
                             }
                         };
                         self.emit_insn(insn);
+                        self.emit_insn(Insn::NoneValue);
+                        Ok(())
+                    }
+                    SExp::Id(Id::Id("set-car!")) => {
+                        let (cons, new_car) = Self::expect_2_arg(&sexps[..])?;
+                        self.compile_exp(cons)?;
+                        self.compile_exp(new_car)?; //new_car
+                        self.emit_insn(Insn::SetCar);
+                        self.emit_insn(Insn::NoneValue);
+                        Ok(())
+                    }
+                    SExp::Id(Id::Id("set-cdr!")) => {
+                        let (cons, new_cdr) = Self::expect_2_arg(&sexps[..])?;
+                        self.compile_exp(cons)?;
+                        self.compile_exp(new_cdr)?; //new_car
+                        self.emit_insn(Insn::SetCdr);
+                        self.emit_insn(Insn::NoneValue);
                         Ok(())
                     }
                     SExp::Id(Id::Id("+")) => match &sexps[1..] {
