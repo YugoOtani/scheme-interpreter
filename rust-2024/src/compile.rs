@@ -1,3 +1,4 @@
+use std::collections::linked_list::IterMut;
 use std::collections::LinkedList;
 use std::fs::File;
 use std::vec;
@@ -5,7 +6,6 @@ use std::vec;
 use crate::ast::*;
 use crate::insn::*;
 use crate::parser::parse_many;
-use crate::scheme_value::Closure;
 use crate::token::Token;
 use anyhow::*;
 use std::io::Read;
@@ -20,19 +20,31 @@ pub struct Compiler<'a> {
 }
 struct ScopeCompiler<'a> {
     insn: Vec<Insn>,
-    local_vars: Vec<&'a str>,
+    local_vars: Vec<LocalVar<'a>>,
+    upvalues: Vec<UpvalueInfo>,
 }
-#[derive(Debug, Clone, Copy)]
+struct LocalVar<'a> {
+    name: &'a str,
+    is_captured: bool,
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct UpvalueInfo {
+    index: usize,
+    is_local: bool,
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum VariableType {
     Local(usize),
-    Upvalue { from_cur: usize, index: usize },
+    Upvalue(UpvalueInfo),
     Global,
 }
+
 impl<'a> ScopeCompiler<'a> {
     fn new() -> Self {
         Self {
             insn: vec![],
             local_vars: vec![],
+            upvalues: vec![],
         }
     }
 }
@@ -119,8 +131,8 @@ impl<'a> Compiler<'a> {
                         (f, param)
                     }
                 };
-                let (_, insn, arity) = self.compile_func(f, param, val)?;
-                self.emit_insn(Insn::push_closure(insn, arity));
+                let closure = self.compile_func(f, param, val)?;
+                self.emit_insn(Insn::PushClosure(Box::new(closure)));
                 if is_local {
                     self.push_local(f)
                 } else {
@@ -136,7 +148,7 @@ impl<'a> Compiler<'a> {
         fname: &'a str,
         param: &'a [SExp],
         body: &'a [SExp],
-    ) -> anyhow::Result<Closure> {
+    ) -> anyhow::Result<ClosureInfo> {
         self.new_frame();
         self.push_local(fname);
         for prm in param {
@@ -145,7 +157,11 @@ impl<'a> Compiler<'a> {
         self.compile_body(body)?;
         self.emit_insn(Insn::Return);
         let cmp = self.pop_frame().unwrap();
-        Ok((vec![], cmp.insn, param.len()))
+        Ok(ClosureInfo {
+            insn: cmp.insn,
+            arity: param.len(),
+            upvalues: vec![],
+        })
     }
     fn compile_body(&mut self, lst: &'a [SExp]) -> anyhow::Result<()> {
         let n = lst.len();
@@ -172,7 +188,7 @@ impl<'a> Compiler<'a> {
                 let insn = match self.resolve_variable(id) {
                     VariableType::Global => Insn::GetGlobal(id.to_string()),
                     VariableType::Local(i) => Insn::GetLocal(i),
-                    VariableType::Upvalue { .. } => todo!(),
+                    VariableType::Upvalue(upv) => Insn::GetUpvalue(upv.index),
                 };
                 self.emit_insn(insn);
                 Ok(())
@@ -209,14 +225,13 @@ impl<'a> Compiler<'a> {
                             [var, body @ ..] => match var {
                                 SExp::Id(_) => {
                                     // (lambda x (+ x 1))
-                                    let (_, insn, arity) =
-                                        self.compile_func("", &var_exp[0..1], body)?;
-                                    self.emit_insn(Insn::push_closure(insn, arity));
+                                    let closure = self.compile_func("", &var_exp[0..1], body)?;
+                                    self.emit_insn(Insn::PushClosure(Box::new(closure)));
                                     Ok(())
                                 }
                                 SExp::SList(param) => {
-                                    let (_, insn, arity) = self.compile_func("", param, body)?;
-                                    self.emit_insn(Insn::push_closure(insn, arity));
+                                    let closure = self.compile_func("", param, body)?;
+                                    self.emit_insn(Insn::PushClosure(Box::new(closure)));
                                     Ok(())
                                 }
                             },
@@ -246,12 +261,10 @@ impl<'a> Compiler<'a> {
                         let (id, exp) = expect_2arg(arg)?;
                         let id = SExp::expect_id(id)?;
                         self.compile_exp(exp)?;
-                        let insn = match Self::resolve_variable(&self, id) {
+                        let insn = match self.resolve_variable(id) {
                             VariableType::Local(i) => Insn::SetLocal(i),
                             VariableType::Global => Insn::SetGlobal(id.to_string()),
-                            VariableType::Upvalue { from_cur, index } => {
-                                Insn::SetUpValue(self.to_upvalue_index(from_cur, index))
-                            }
+                            VariableType::Upvalue(upv) => Insn::SetUpvalue(upv.index),
                         };
                         self.emit_insn(insn);
                         self.emit_insn(Insn::NoneValue);
@@ -289,7 +302,7 @@ impl<'a> Compiler<'a> {
                         let insn = match self.resolve_variable(*id) {
                             VariableType::Global => Insn::GetGlobal(id.to_string()),
                             VariableType::Local(i) => Insn::GetLocal(i),
-                            VariableType::Upvalue { .. } => todo!(), //関数呼び出しかつクロージャ
+                            VariableType::Upvalue(upv) => Insn::GetUpvalue(upv.index),
                         };
                         self.emit_insn(insn);
                         for arg in arg {
@@ -308,7 +321,10 @@ impl<'a> Compiler<'a> {
         self.cur.insn.push(insn)
     }
     fn push_local(&mut self, s: &'a str) {
-        self.cur.local_vars.push(s)
+        self.cur.local_vars.push(LocalVar {
+            name: s,
+            is_captured: false,
+        })
     }
     fn get_bytecode(self) -> Vec<Insn> {
         self.cur.insn
@@ -327,27 +343,61 @@ impl<'a> Compiler<'a> {
             }
         }
     }
-
-    fn resolve_variable(&self, id: &str) -> VariableType {
-        for i in (0..self.cur.local_vars.len()).rev() {
-            if self.cur.local_vars[i] == id {
-                return VariableType::Local(i);
+    fn resolve_local(cmp: &ScopeCompiler, id: &str) -> Option<usize> {
+        for i in (0..cmp.local_vars.len()).rev() {
+            if cmp.local_vars[i].name == id {
+                return Some(i);
             }
         }
-        for (cmp_i, cmp) in self.par.iter().enumerate() {
-            for local_i in (0..cmp.local_vars.len()).rev() {
-                if cmp.local_vars[local_i] == id {
-                    return VariableType::Upvalue {
-                        from_cur: cmp_i + 1,
-                        index: local_i,
-                    };
-                }
-            }
+        None
+    }
+    fn resolve_variable(&mut self, id: &str) -> VariableType {
+        if let Some(i) = Self::resolve_local(&mut self.cur, id) {
+            return VariableType::Local(i);
+        }
+        if let Some(i) = Self::resolve_upvalue(&mut self.par.iter_mut(), id) {
+            self.cur.upvalues.push(i);
+            return VariableType::Upvalue(i);
         }
         VariableType::Global
     }
-    fn to_upvalue_index(&self, _frame_index: usize, _var_index: usize) -> usize {
-        todo!()
+    fn add_upvalue(cmp: &mut ScopeCompiler, is_local: bool, index: usize) -> usize {
+        if let Some(i) = cmp
+            .upvalues
+            .iter()
+            .rposition(|e| e.index == index && e.is_local == is_local)
+        {
+            i
+        } else {
+            let ret = cmp.upvalues.len();
+            cmp.upvalues.push(UpvalueInfo { index, is_local });
+            ret
+        }
+    }
+    fn resolve_upvalue(cmps: &mut IterMut<ScopeCompiler<'a>>, id: &str) -> Option<UpvalueInfo> {
+        if let Some(cur) = cmps.next() {
+            match Self::resolve_local(&cur, id) {
+                None => match Self::resolve_upvalue(cmps, id) {
+                    None => None,
+                    Some(par) => {
+                        let index = Self::add_upvalue(cur, par.is_local, par.index);
+                        Some(UpvalueInfo {
+                            index,
+                            is_local: false,
+                        })
+                    }
+                },
+                Some(index) => {
+                    cur.local_vars[index].is_captured = true;
+                    Some(UpvalueInfo {
+                        index,
+                        is_local: true,
+                    })
+                }
+            }
+        } else {
+            None
+        }
     }
 }
 
@@ -370,4 +420,36 @@ fn read_to_string(fname: &str) -> anyhow::Result<String> {
     f.read_to_string(&mut contents)
         .context("something went wrong reading the file")?;
     Ok(contents)
+}
+
+#[test]
+fn upvalue_test() {
+    let mut cmp = Compiler::new();
+    // frame 1
+    cmp.push_local("a1");
+    cmp.push_local("b1");
+    // frame 2
+    cmp.new_frame();
+    cmp.push_local("a2");
+    cmp.push_local("b2");
+    assert_eq!(unwrap_upv(cmp.resolve_variable("a1")), (true, 0));
+    // frame 3
+    cmp.new_frame();
+    cmp.push_local("a3");
+    cmp.push_local("b3");
+    assert_eq!(unwrap_upv(cmp.resolve_variable("a2")), (true, 0));
+    assert_eq!(unwrap_upv(cmp.resolve_variable("b1")), (false, 1));
+    assert_eq!(unwrap_upv(cmp.resolve_variable("a1")), (false, 0));
+    cmp.pop_frame();
+
+    // frame 2
+    assert_eq!(unwrap_upv(cmp.resolve_variable("a1")), (true, 0));
+    assert_eq!(unwrap_upv(cmp.resolve_variable("b1")), (true, 1));
+}
+#[cfg(test)]
+fn unwrap_upv(vt: VariableType) -> (bool, usize) {
+    match vt {
+        VariableType::Upvalue(UpvalueInfo { is_local, index }) => (is_local, index),
+        _ => panic!(),
+    }
 }

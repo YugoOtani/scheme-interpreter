@@ -1,7 +1,10 @@
 use anyhow::{bail, Context};
 use std::collections::HashMap;
 
-use crate::{insn::Insn, scheme_value::*};
+use crate::{
+    insn::{ClosureInfo, Insn},
+    scheme_value::*,
+};
 
 pub struct VM {
     global: HashMap<String, Value>,
@@ -117,7 +120,7 @@ impl VM {
                         return Ok(());
                     }
                     Insn::PushClosure(closure) => {
-                        let (insn, arity) = &**closure;
+                        let ClosureInfo { arity, insn, .. } = &**closure;
                         stk.push(Value::closure(insn.clone(), *arity));
                     }
                     Insn::Call(nargs) => {
@@ -139,8 +142,8 @@ impl VM {
                         ip = frame.ip_prev;
                         frame = prev_frame(&mut frames);
                     }
-                    Insn::GetUpValue(_) => todo!(),
-                    Insn::SetUpValue(_) => todo!(),
+                    Insn::GetUpvalue(_) => todo!(),
+                    Insn::SetUpvalue(_) => todo!(),
                     Insn::SetCar => {
                         let car = pop(&mut stk)?;
                         let cons = pop(&mut stk)?;

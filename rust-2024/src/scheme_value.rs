@@ -14,12 +14,21 @@ pub enum Value {
     False,
     String(Ptr<String>),
     Cons(Ptr<Cons>),
-    Closure(Ptr<Closure>),
+    Closure(Ptr<ObjClosure>),
 }
 pub type Ptr<T> = Gc<GcCell<T>>;
-pub type Closure = (Vec<Value>, Vec<Insn>, Arity);
+#[derive(Debug, Clone, PartialEq, Eq, Trace, Finalize)]
+pub struct ObjClosure {
+    insn: Vec<Insn>,
+    arity: usize,
+    upvalues: Vec<ObjUpvalue>,
+}
+#[derive(Debug, Clone, PartialEq, Eq, Trace, Finalize)]
+pub struct ObjUpvalue {
+    closed: bool,
+    location: Ptr<Value>,
+}
 pub type Cons = (Value, Value);
-pub type Arity = usize;
 
 impl Default for Value {
     fn default() -> Self {
@@ -34,7 +43,11 @@ impl Value {
         Self::Cons(Self::ptr((a, b)))
     }
     pub fn closure(insn: Vec<Insn>, arity: usize) -> Self {
-        Self::Closure(Self::ptr((vec![], insn, arity)))
+        Self::Closure(Self::ptr(ObjClosure {
+            insn,
+            arity,
+            upvalues: vec![],
+        }))
     }
     pub fn string(s: String) -> Self {
         Self::String(Self::ptr(s))
@@ -83,17 +96,17 @@ impl Value {
             _ => bail!("expected pair, found {}", self.type_name()),
         }
     }
-    pub fn as_closure(&self) -> anyhow::Result<&Ptr<Closure>> {
+    pub fn as_closure(&self) -> anyhow::Result<&Ptr<ObjClosure>> {
         match self {
             Value::Closure(obj) => Ok(obj),
             e => bail!("expected pair, found {}", e.type_name()),
         }
     }
-    pub fn insn_ptr(closure: &Ptr<Closure>) -> *const Insn {
-        closure.as_ref().borrow().deref().1.as_ptr() as *const Insn
+    pub fn insn_ptr(closure: &Ptr<ObjClosure>) -> *const Insn {
+        closure.as_ref().borrow().deref().insn.as_ptr() as *const Insn
     }
-    pub fn arity(closure: &Ptr<Closure>) -> usize {
-        closure.as_ref().borrow().2
+    pub fn arity(closure: &Ptr<ObjClosure>) -> usize {
+        closure.as_ref().borrow().arity
     }
     pub fn car(cons: &Ptr<Cons>) -> Value {
         cons.as_ref().borrow().deref().0.clone()

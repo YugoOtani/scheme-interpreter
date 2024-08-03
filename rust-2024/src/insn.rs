@@ -24,16 +24,18 @@ pub enum Insn {
     SetGlobal(String),
     GetLocal(usize),
     SetLocal(usize),
-    GetUpValue(usize),
-    SetUpValue(usize),
-    PushClosure(Box<(Vec<Insn>, usize)>),
+    GetUpvalue(usize),
+    SetUpvalue(usize),
+    PushClosure(Box<ClosureInfo>),
 
     Print,
     Exit,
     Return,
 }
-impl Insn {
-    pub fn push_closure(insn: Vec<Insn>, arity: usize) -> Insn {
-        Self::PushClosure(Box::new((insn, arity)))
-    }
+#[derive(Debug, Clone, PartialEq, Eq, Trace, Finalize)]
+pub struct ClosureInfo {
+    pub insn: Vec<Insn>,
+    pub upvalues: Vec<(IsLocal, usize)>,
+    pub arity: usize,
 }
+type IsLocal = bool;
