@@ -66,12 +66,11 @@ impl Debug for SExp<'_> {
                 let n = slist.len();
                 for i in 0..n {
                     write!(f, "{:?}", slist[i])?;
-                    if i == n - 1 {
-                        write!(f, ")")?;
-                    } else {
+                    if i != n - 1 {
                         write!(f, " ")?;
                     }
                 }
+                write!(f, ")")?;
                 Ok(())
             }
         }
@@ -82,6 +81,12 @@ impl<'a> SExp<'a> {
         match self {
             SExp::Id(Id::Id(s)) => Ok(s),
             _ => bail!("expect identifier, found {:?}", self),
+        }
+    }
+    pub fn expect_sexp_list(&self) -> anyhow::Result<&Vec<SExp>> {
+        match self {
+            SExp::SList(v) => Ok(v),
+            SExp::Id(_) => bail!("expect list of expression, found {:?}", self),
         }
     }
 }

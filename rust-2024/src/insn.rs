@@ -5,6 +5,8 @@ pub enum Insn {
     None,
     NoneValue,
     Nil,
+    Pop,
+    PopN(usize),
     True,
     False,
     Not,
@@ -27,7 +29,6 @@ pub enum Insn {
     GetUpvalue(usize),
     SetUpvalue(usize),
     PushClosure(Box<ClosureInfo>),
-
     Print,
     Exit,
     Return,

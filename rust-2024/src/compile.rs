@@ -15,31 +15,32 @@ use std::io::Read;
 // 複数のクロージャが同じupvalueを参照する場合
 
 pub struct Compiler<'a> {
-    cur: ScopeCompiler<'a>,
-    par: LinkedList<ScopeCompiler<'a>>,
+    cur: FuncCompiler<'a>,
+    par: LinkedList<FuncCompiler<'a>>, // frontが内側の関数定義
 }
-struct ScopeCompiler<'a> {
+struct FuncCompiler<'a> {
     insn: Vec<Insn>,
     local_vars: Vec<LocalVar<'a>>,
     upvalues: Vec<UpvalueInfo>,
 }
+#[derive(Debug, Clone)]
 struct LocalVar<'a> {
     name: &'a str,
     is_captured: bool,
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct UpvalueInfo {
+pub struct UpvalueInfo {
     index: usize,
     is_local: bool,
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum VariableType {
     Local(usize),
-    Upvalue(UpvalueInfo),
+    Upvalue(usize),
     Global,
 }
 
-impl<'a> ScopeCompiler<'a> {
+impl<'a> FuncCompiler<'a> {
     fn new() -> Self {
         Self {
             insn: vec![],
@@ -52,7 +53,7 @@ impl<'a> ScopeCompiler<'a> {
 impl<'a> Compiler<'a> {
     pub fn new() -> Self {
         Self {
-            cur: ScopeCompiler::new(),
+            cur: FuncCompiler::new(),
             par: LinkedList::new(),
         }
     }
@@ -85,7 +86,7 @@ impl<'a> Compiler<'a> {
                     _ => bail!("[define] invalid format"),
                 },
                 [SExp::Id(Id::Id("load")), arg @ ..] => {
-                    let fname = SExp::expect_id(expect_1arg(arg)?)?;
+                    let fname = SExp::expect_id(expect_1_elem(arg)?)?;
                     let content = read_to_string(fname)?;
                     let tkn = Token::from_str(&content)?;
                     let asts = parse_many(tkn)?;
@@ -114,7 +115,7 @@ impl<'a> Compiler<'a> {
     ) -> anyhow::Result<()> {
         match name {
             SExp::Id(name) => {
-                let val = expect_1arg(val)?;
+                let val = expect_1_elem(val)?;
                 self.compile_exp(val)?;
                 if is_local {
                     self.push_local(Id::expect_id(name)?);
@@ -156,13 +157,22 @@ impl<'a> Compiler<'a> {
         }
         self.compile_body(body)?;
         self.emit_insn(Insn::Return);
-        let cmp = self.pop_frame().unwrap();
+        let FuncCompiler {
+            insn,
+            local_vars,
+            upvalues,
+        } = self.pop_frame().unwrap();
+
         Ok(ClosureInfo {
-            insn: cmp.insn,
+            insn,
             arity: param.len(),
-            upvalues: vec![],
+            upvalues: upvalues
+                .into_iter()
+                .map(|UpvalueInfo { index, is_local }| (is_local, index))
+                .collect(),
         })
     }
+    // local1, local2, ... result
     fn compile_body(&mut self, lst: &'a [SExp]) -> anyhow::Result<()> {
         let n = lst.len();
         if lst.len() == 0 {
@@ -188,7 +198,7 @@ impl<'a> Compiler<'a> {
                 let insn = match self.resolve_variable(id) {
                     VariableType::Global => Insn::GetGlobal(id.to_string()),
                     VariableType::Local(i) => Insn::GetLocal(i),
-                    VariableType::Upvalue(upv) => Insn::GetUpvalue(upv.index),
+                    VariableType::Upvalue(i) => Insn::GetUpvalue(i),
                 };
                 self.emit_insn(insn);
                 Ok(())
@@ -237,41 +247,74 @@ impl<'a> Compiler<'a> {
                             },
                         }
                     }
+                    [SExp::Id(Id::Id("let")), bind_body @ ..] => match bind_body {
+                        [] | [_] => bail!("[let] invalid number of argument"),
+                        [bind, body @ ..] => {
+                            let bind = bind.expect_sexp_list()?;
+                            let mut id_save = vec![];
+
+                            let ret_val_index = self.local_len();
+                            self.emit_insn(Insn::Nil);
+                            for bind in bind {
+                                let (id, val) = expect_2_elems(&bind.expect_sexp_list()?[..])?;
+                                let id = id.expect_id()?;
+                                id_save.push(id);
+                                self.compile_exp(val)?;
+                            }
+                            self.push_local("");
+                            for id in &id_save {
+                                self.push_local(*id);
+                            }
+                            self.compile_body(body)?;
+                            self.emit_insn(Insn::SetLocal(ret_val_index));
+
+                            // index : ret_val_index  +1     +2         +n      len = n + 1
+                            // value : ret_val       local1 local2 .. local_n
+                            // => len - ret_val_index = n_locals + 1
+                            let n_locals = self.local_len() - ret_val_index - 1;
+                            self.emit_insn(Insn::PopN(n_locals));
+                            for _ in 0..n_locals {
+                                self.pop_local().unwrap();
+                            }
+
+                            Ok(())
+                        }
+                    },
                     [SExp::Id(Id::Id("'")), ..] | [SExp::Id(Id::Id("quote")), ..] => {
                         todo!()
                     }
                     [SExp::Id(Id::Id("cons")), arg @ ..] => {
-                        let (car, cdr) = expect_2arg(arg)?;
+                        let (car, cdr) = expect_2_elems(arg)?;
                         self.compile_exp(car)?;
                         self.compile_exp(cdr)?;
                         self.emit_insn(Insn::Cons);
                         Ok(())
                     }
                     [SExp::Id(Id::Id("car")), arg @ ..] => {
-                        self.compile_exp(expect_1arg(arg)?)?;
+                        self.compile_exp(expect_1_elem(arg)?)?;
                         self.emit_insn(Insn::Car);
                         Ok(())
                     }
                     [SExp::Id(Id::Id("cdr")), arg @ ..] => {
-                        self.compile_exp(expect_1arg(arg)?)?;
+                        self.compile_exp(expect_1_elem(arg)?)?;
                         self.emit_insn(Insn::Cdr);
                         Ok(())
                     }
                     [SExp::Id(Id::Id("set!")), arg @ ..] => {
-                        let (id, exp) = expect_2arg(arg)?;
+                        let (id, exp) = expect_2_elems(arg)?;
                         let id = SExp::expect_id(id)?;
                         self.compile_exp(exp)?;
                         let insn = match self.resolve_variable(id) {
                             VariableType::Local(i) => Insn::SetLocal(i),
                             VariableType::Global => Insn::SetGlobal(id.to_string()),
-                            VariableType::Upvalue(upv) => Insn::SetUpvalue(upv.index),
+                            VariableType::Upvalue(i) => Insn::SetUpvalue(i),
                         };
                         self.emit_insn(insn);
                         self.emit_insn(Insn::NoneValue);
                         Ok(())
                     }
                     [SExp::Id(Id::Id("set-car!")), arg @ ..] => {
-                        let (cons, new_car) = expect_2arg(arg)?;
+                        let (cons, new_car) = expect_2_elems(arg)?;
                         self.compile_exp(cons)?;
                         self.compile_exp(new_car)?; //new_car
                         self.emit_insn(Insn::SetCar);
@@ -279,7 +322,7 @@ impl<'a> Compiler<'a> {
                         Ok(())
                     }
                     [SExp::Id(Id::Id("set-cdr!")), arg @ ..] => {
-                        let (cons, new_cdr) = expect_2arg(arg)?;
+                        let (cons, new_cdr) = expect_2_elems(arg)?;
                         self.compile_exp(cons)?;
                         self.compile_exp(new_cdr)?; //new_car
                         self.emit_insn(Insn::SetCdr);
@@ -299,12 +342,14 @@ impl<'a> Compiler<'a> {
                         }
                     },
                     [SExp::Id(Id::Id(id)), arg @ ..] => {
+                        // function call
                         let insn = match self.resolve_variable(*id) {
                             VariableType::Global => Insn::GetGlobal(id.to_string()),
                             VariableType::Local(i) => Insn::GetLocal(i),
-                            VariableType::Upvalue(upv) => Insn::GetUpvalue(upv.index),
+                            VariableType::Upvalue(i) => Insn::GetUpvalue(i),
                         };
                         self.emit_insn(insn);
+
                         for arg in arg {
                             self.compile_exp(arg)?;
                         }
@@ -326,15 +371,21 @@ impl<'a> Compiler<'a> {
             is_captured: false,
         })
     }
+    fn pop_local(&mut self) -> Option<LocalVar> {
+        self.cur.local_vars.pop()
+    }
+    fn local_len(&self) -> usize {
+        self.cur.local_vars.len()
+    }
     fn get_bytecode(self) -> Vec<Insn> {
         self.cur.insn
     }
     fn new_frame(&mut self) {
-        let mut cur = ScopeCompiler::new();
+        let mut cur = FuncCompiler::new();
         std::mem::swap(&mut cur, &mut self.cur);
         self.par.push_front(cur);
     }
-    fn pop_frame(&mut self) -> Option<ScopeCompiler> {
+    fn pop_frame(&mut self) -> Option<FuncCompiler> {
         match self.par.pop_front() {
             None => None,
             Some(mut cmp) => {
@@ -343,7 +394,7 @@ impl<'a> Compiler<'a> {
             }
         }
     }
-    fn resolve_local(cmp: &ScopeCompiler, id: &str) -> Option<usize> {
+    fn resolve_local(cmp: &FuncCompiler, id: &str) -> Option<usize> {
         for i in (0..cmp.local_vars.len()).rev() {
             if cmp.local_vars[i].name == id {
                 return Some(i);
@@ -355,13 +406,13 @@ impl<'a> Compiler<'a> {
         if let Some(i) = Self::resolve_local(&mut self.cur, id) {
             return VariableType::Local(i);
         }
-        if let Some(i) = Self::resolve_upvalue(&mut self.par.iter_mut(), id) {
-            self.cur.upvalues.push(i);
+        if let Some(upv) = Self::resolve_upvalue(&mut self.par.iter_mut(), id) {
+            let i = Self::add_upvalue(&mut self.cur, upv.is_local, upv.index);
             return VariableType::Upvalue(i);
         }
         VariableType::Global
     }
-    fn add_upvalue(cmp: &mut ScopeCompiler, is_local: bool, index: usize) -> usize {
+    fn add_upvalue(cmp: &mut FuncCompiler, is_local: bool, index: usize) -> usize {
         if let Some(i) = cmp
             .upvalues
             .iter()
@@ -374,7 +425,7 @@ impl<'a> Compiler<'a> {
             ret
         }
     }
-    fn resolve_upvalue(cmps: &mut IterMut<ScopeCompiler<'a>>, id: &str) -> Option<UpvalueInfo> {
+    fn resolve_upvalue(cmps: &mut IterMut<FuncCompiler<'a>>, id: &str) -> Option<UpvalueInfo> {
         if let Some(cur) = cmps.next() {
             match Self::resolve_local(&cur, id) {
                 None => match Self::resolve_upvalue(cmps, id) {
@@ -401,16 +452,16 @@ impl<'a> Compiler<'a> {
     }
 }
 
-fn expect_1arg<T>(arg: &[T]) -> anyhow::Result<&T> {
+fn expect_1_elem<T>(arg: &[T]) -> anyhow::Result<&T> {
     match arg {
         [x] => Ok(x),
-        _ => bail!("expect 1 argument, found {}.", arg.len()),
+        _ => bail!("expect 1 element, found {}.", arg.len()),
     }
 }
-fn expect_2arg<T>(arg: &[T]) -> anyhow::Result<(&T, &T)> {
+fn expect_2_elems<T>(arg: &[T]) -> anyhow::Result<(&T, &T)> {
     match arg {
         [x, y] => Ok((x, y)),
-        _ => bail!("expect 2 argument, found {}.", arg.len()),
+        _ => bail!("expect 2 elements, found {}.", arg.len()),
     }
 }
 fn read_to_string(fname: &str) -> anyhow::Result<String> {
@@ -420,36 +471,4 @@ fn read_to_string(fname: &str) -> anyhow::Result<String> {
     f.read_to_string(&mut contents)
         .context("something went wrong reading the file")?;
     Ok(contents)
-}
-
-#[test]
-fn upvalue_test() {
-    let mut cmp = Compiler::new();
-    // frame 1
-    cmp.push_local("a1");
-    cmp.push_local("b1");
-    // frame 2
-    cmp.new_frame();
-    cmp.push_local("a2");
-    cmp.push_local("b2");
-    assert_eq!(unwrap_upv(cmp.resolve_variable("a1")), (true, 0));
-    // frame 3
-    cmp.new_frame();
-    cmp.push_local("a3");
-    cmp.push_local("b3");
-    assert_eq!(unwrap_upv(cmp.resolve_variable("a2")), (true, 0));
-    assert_eq!(unwrap_upv(cmp.resolve_variable("b1")), (false, 1));
-    assert_eq!(unwrap_upv(cmp.resolve_variable("a1")), (false, 0));
-    cmp.pop_frame();
-
-    // frame 2
-    assert_eq!(unwrap_upv(cmp.resolve_variable("a1")), (true, 0));
-    assert_eq!(unwrap_upv(cmp.resolve_variable("b1")), (true, 1));
-}
-#[cfg(test)]
-fn unwrap_upv(vt: VariableType) -> (bool, usize) {
-    match vt {
-        VariableType::Upvalue(UpvalueInfo { is_local, index }) => (is_local, index),
-        _ => panic!(),
-    }
 }

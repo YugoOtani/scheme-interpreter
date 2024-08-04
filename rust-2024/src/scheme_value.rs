@@ -19,15 +19,42 @@ pub enum Value {
 pub type Ptr<T> = Gc<GcCell<T>>;
 #[derive(Debug, Clone, PartialEq, Eq, Trace, Finalize)]
 pub struct ObjClosure {
-    insn: Vec<Insn>,
-    arity: usize,
-    upvalues: Vec<ObjUpvalue>,
+    pub insn: Vec<Insn>,
+    pub arity: usize,
+    pub upvalues: Vec<ObjUpvalue>,
 }
 #[derive(Debug, Clone, PartialEq, Eq, Trace, Finalize)]
 pub struct ObjUpvalue {
-    closed: bool,
-    location: Ptr<Value>,
+    pub location: ValueRawPtr,
 }
+impl ObjUpvalue {
+    pub unsafe fn get_value(&self) -> Value {
+        self.location.0.as_ref().unwrap().clone()
+    }
+    pub unsafe fn set_value(&mut self, v: Value) {
+        *self.location.0.as_mut().unwrap() = v
+    }
+}
+#[derive(Debug, Clone, PartialEq, Eq, Finalize)]
+pub struct ValueRawPtr(pub *mut Value);
+unsafe impl Trace for ValueRawPtr {
+    unsafe fn trace(&self) {
+        self.0.as_ref().trace()
+    }
+
+    unsafe fn root(&self) {
+        self.0.as_ref().root()
+    }
+
+    unsafe fn unroot(&self) {
+        self.0.as_ref().unroot()
+    }
+
+    fn finalize_glue(&self) {
+        unsafe { self.0.as_ref() }.finalize_glue()
+    }
+}
+
 pub type Cons = (Value, Value);
 
 impl Default for Value {
@@ -42,11 +69,11 @@ impl Value {
     pub fn cons(a: Self, b: Self) -> Self {
         Self::Cons(Self::ptr((a, b)))
     }
-    pub fn closure(insn: Vec<Insn>, arity: usize) -> Self {
+    pub fn closure(insn: Vec<Insn>, arity: usize, upvalues: Vec<ObjUpvalue>) -> Self {
         Self::Closure(Self::ptr(ObjClosure {
             insn,
             arity,
-            upvalues: vec![],
+            upvalues,
         }))
     }
     pub fn string(s: String) -> Self {
