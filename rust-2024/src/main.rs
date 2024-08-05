@@ -1,5 +1,6 @@
 pub mod ast;
 pub mod compile;
+pub mod datastructure;
 pub mod exec;
 pub mod insn;
 pub mod parser;

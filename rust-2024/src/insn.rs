@@ -26,6 +26,7 @@ pub enum Insn {
     SetGlobal(String),
     GetLocal(usize),
     SetLocal(usize),
+    CloseUpvalue(usize),
     GetUpvalue(usize),
     SetUpvalue(usize),
     PushClosure(Box<ClosureInfo>),

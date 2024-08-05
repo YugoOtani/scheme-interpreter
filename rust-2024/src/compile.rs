@@ -14,6 +14,8 @@ use std::io::Read;
 // コンパイル途中にエラーが起こると状態の整合を取るのが面倒だから
 // 複数のクロージャが同じupvalueを参照する場合
 
+//TODO: コンパイラの処理と実行時の処理(Insnのemit)を区別したい
+
 pub struct Compiler<'a> {
     cur: FuncCompiler<'a>,
     par: LinkedList<FuncCompiler<'a>>, // frontが内側の関数定義
@@ -151,17 +153,33 @@ impl<'a> Compiler<'a> {
         body: &'a [SExp],
     ) -> anyhow::Result<ClosureInfo> {
         self.new_frame();
+
         self.push_local(fname);
         for prm in param {
             self.push_local(SExp::expect_id(prm)?);
         }
         self.compile_body(body)?;
+        for i in (0..self.local_len()).rev() {
+            if let Some(LocalVar {
+                name: _,
+                is_captured,
+            }) = self.pop_local()
+            {
+                if is_captured {
+                    self.emit_insn(Insn::CloseUpvalue(i));
+                }
+            }
+        }
         self.emit_insn(Insn::Return);
+
         let FuncCompiler {
             insn,
             local_vars,
             upvalues,
         } = self.pop_frame().unwrap();
+
+        #[cfg(debug_assertions)]
+        assert!(local_vars.len() == 0);
 
         Ok(ClosureInfo {
             insn,
@@ -272,10 +290,11 @@ impl<'a> Compiler<'a> {
                             // value : ret_val       local1 local2 .. local_n
                             // => len - ret_val_index = n_locals + 1
                             let n_locals = self.local_len() - ret_val_index - 1;
-                            self.emit_insn(Insn::PopN(n_locals));
+
                             for _ in 0..n_locals {
                                 self.pop_local().unwrap();
                             }
+                            self.emit_insn(Insn::PopN(n_locals));
 
                             Ok(())
                         }
@@ -362,6 +381,7 @@ impl<'a> Compiler<'a> {
             }
         }
     }
+
     fn emit_insn(&mut self, insn: Insn) {
         self.cur.insn.push(insn)
     }
@@ -389,6 +409,11 @@ impl<'a> Compiler<'a> {
         match self.par.pop_front() {
             None => None,
             Some(mut cmp) => {
+                #[cfg(debug_assertions)]
+                if cmp.local_vars.len() > 0 {
+                    panic!("{:?}", cmp.local_vars);
+                }
+
                 std::mem::swap(&mut cmp, &mut self.cur);
                 Some(cmp)
             }

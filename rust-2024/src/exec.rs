@@ -1,6 +1,6 @@
 use anyhow::{bail, Context};
 use gc::Gc;
-use std::collections::HashMap;
+use std::collections::{HashMap, LinkedList};
 const STACK_SIZE: usize = 100;
 use crate::{
     insn::{ClosureInfo, Insn},
@@ -10,6 +10,7 @@ use crate::{
 pub struct VM {
     global: HashMap<String, Value>,
     stack: Vec<Value>,
+
     #[cfg(debug_assertions)]
     stk_addr: *const Value,
 }
@@ -237,6 +238,7 @@ impl VM {
                             self.stack.truncate(l - *n);
                         }
                     }
+                    Insn::CloseUpvalue(_) => todo!(),
                 }
             }
         }

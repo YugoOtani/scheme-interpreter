@@ -35,7 +35,7 @@ impl ObjUpvalue {
         *self.location.0.as_mut().unwrap() = v
     }
 }
-#[derive(Debug, Clone, PartialEq, Eq, Finalize)]
+#[derive(Debug, Clone, PartialEq, Eq, Finalize, PartialOrd, Ord)]
 pub struct ValueRawPtr(pub *mut Value);
 unsafe impl Trace for ValueRawPtr {
     unsafe fn trace(&self) {
