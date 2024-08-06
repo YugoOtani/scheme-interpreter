@@ -14,6 +14,7 @@ use exec::*;
 use parser::*;
 use std::io::{self, Write};
 use token::Token;
+const VERBOSE: bool = false;
 fn main() -> anyhow::Result<()> {
     let mut repl = Interpreter::new();
     loop {
@@ -37,20 +38,27 @@ impl<'a> Interpreter<'a> {
         Self { vm: VM::new() }
     }
     fn interpret(&mut self, input: &str) -> anyhow::Result<()> {
-        println!("----------------------------");
-        println!("input: {}", input.trim());
+        if VERBOSE {
+            println!("----------------------------");
+            println!("input: {}", input.trim());
+        }
         let tkn = Token::from_str(&input)?;
-        println!("----------------------------");
-        println!("{:?}", tkn);
-        println!("----------------------------");
+        if VERBOSE {
+            println!("----------------------------");
+            println!("{:?}", tkn);
+            println!("----------------------------");
+        }
         let sexp = parse(tkn)?;
-        println!("{:?}", sexp);
         let cmp = Compiler::new();
         let insn = cmp.compile(&sexp)?;
-        println!("----------------------------");
-        println!("{:?}", insn);
+        if VERBOSE {
+            println!("----------------------------");
+            println!("{:?}", insn);
+        }
         let res = self.vm.exec(insn)?;
-        println!("----------result------------");
+        if VERBOSE {
+            println!("----------result------------");
+        }
         Ok(res)
     }
 }

@@ -2,6 +2,7 @@ use crate::{
     datastructure::SortedSet,
     memory::{Memory, MemoryNoGC, Ptr},
     upvalue::{ObjUpvalue, ObjUpvalueRef},
+    VERBOSE,
 };
 use anyhow::{bail, Context};
 use std::collections::HashMap;
@@ -81,16 +82,16 @@ impl<'a> VM<'a> {
         let mut cur_frame = root;
         unsafe {
             loop {
-                print!("{:?}  ", ip.as_ref().unwrap());
-                for i in 0..self.stack.len() {
-                    if i == cur_frame.base {
-                        print!("|");
+                if VERBOSE {
+                    print!("{:?}  ", ip.as_ref().unwrap());
+                    for i in 0..self.stack.len() {
+                        if i == cur_frame.base {
+                            print!("|");
+                        }
+                        print!("{} ", self.stack[i].to_string(),)
                     }
-                    print!("{} ", self.stack[i].to_string(),)
+                    println!("")
                 }
-
-                println!("upv:{:?}", self.upvalues);
-
                 let tmp = ip;
                 ip = ip.add(1);
                 match tmp.as_ref().unwrap() {
