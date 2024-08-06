@@ -3,9 +3,11 @@ pub mod compile;
 pub mod datastructure;
 pub mod exec;
 pub mod insn;
+pub mod memory;
 pub mod parser;
 pub mod scheme_value;
 pub mod token;
+pub mod upvalue;
 use anyhow::*;
 use compile::Compiler;
 use exec::*;
@@ -27,10 +29,10 @@ fn main() -> anyhow::Result<()> {
         }
     }
 }
-struct Interpreter {
-    vm: VM,
+struct Interpreter<'a> {
+    vm: VM<'a>,
 }
-impl Interpreter {
+impl<'a> Interpreter<'a> {
     fn new() -> Self {
         Self { vm: VM::new() }
     }
@@ -59,4 +61,9 @@ fn get_line() -> anyhow::Result<String> {
         .read_line(&mut buffer)
         .context("failed to get input")?;
     Ok(buffer)
+}
+
+#[cfg(debug_assertions)]
+fn short_addr<T>(addr: &T) -> String {
+    format!("{:x}", (addr as *const T as usize) % (1 << 16))
 }

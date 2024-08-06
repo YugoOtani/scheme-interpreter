@@ -1,6 +1,4 @@
-use gc::{Finalize, Trace};
-
-#[derive(Debug, Clone, PartialEq, Eq, Trace, Finalize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Insn {
     None,
     NoneValue,
@@ -34,7 +32,7 @@ pub enum Insn {
     Exit,
     Return,
 }
-#[derive(Debug, Clone, PartialEq, Eq, Trace, Finalize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ClosureInfo {
     pub insn: Vec<Insn>,
     pub upvalues: Vec<(IsLocal, usize)>,

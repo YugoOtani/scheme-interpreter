@@ -160,14 +160,9 @@ impl<'a> Compiler<'a> {
         }
         self.compile_body(body)?;
         for i in (0..self.local_len()).rev() {
-            if let Some(LocalVar {
-                name: _,
-                is_captured,
-            }) = self.pop_local()
-            {
-                if is_captured {
-                    self.emit_insn(Insn::CloseUpvalue(i));
-                }
+            let lcl = self.pop_local().unwrap();
+            if lcl.is_captured {
+                self.emit_insn(Insn::CloseUpvalue(i));
             }
         }
         self.emit_insn(Insn::Return);
@@ -291,8 +286,14 @@ impl<'a> Compiler<'a> {
                             // => len - ret_val_index = n_locals + 1
                             let n_locals = self.local_len() - ret_val_index - 1;
 
-                            for _ in 0..n_locals {
-                                self.pop_local().unwrap();
+                            for i in 1..=n_locals {
+                                let LocalVar {
+                                    name: _,
+                                    is_captured,
+                                } = self.pop_local().unwrap();
+                                if is_captured {
+                                    self.emit_insn(Insn::CloseUpvalue(ret_val_index + i));
+                                }
                             }
                             self.emit_insn(Insn::PopN(n_locals));
 
@@ -391,8 +392,8 @@ impl<'a> Compiler<'a> {
             is_captured: false,
         })
     }
-    fn pop_local(&mut self) -> Option<LocalVar> {
-        self.cur.local_vars.pop()
+    fn pop_local(&mut self) -> anyhow::Result<LocalVar> {
+        self.cur.local_vars.pop().context("local var is empty")
     }
     fn local_len(&self) -> usize {
         self.cur.local_vars.len()
@@ -410,7 +411,7 @@ impl<'a> Compiler<'a> {
             None => None,
             Some(mut cmp) => {
                 #[cfg(debug_assertions)]
-                if cmp.local_vars.len() > 0 {
+                if self.cur.local_vars.len() > 0 {
                     panic!("{:?}", cmp.local_vars);
                 }
 

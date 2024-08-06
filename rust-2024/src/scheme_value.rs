@@ -1,10 +1,8 @@
 use anyhow::*;
-use gc::*;
-use std::{borrow::Borrow, ops::Deref};
 
-use crate::insn::Insn;
+use crate::{insn::Insn, memory::Ptr, upvalue::ObjUpvalueRef};
 
-#[derive(Debug, Clone, PartialEq, Eq, Trace, Finalize)]
+#[derive(Debug, Clone)]
 pub enum Value {
     None,
     Nil,
@@ -16,43 +14,11 @@ pub enum Value {
     Cons(Ptr<Cons>),
     Closure(Ptr<ObjClosure>),
 }
-pub type Ptr<T> = Gc<GcCell<T>>;
-#[derive(Debug, Clone, PartialEq, Eq, Trace, Finalize)]
+#[derive(Debug)]
 pub struct ObjClosure {
     pub insn: Vec<Insn>,
     pub arity: usize,
-    pub upvalues: Vec<ObjUpvalue>,
-}
-#[derive(Debug, Clone, PartialEq, Eq, Trace, Finalize)]
-pub struct ObjUpvalue {
-    pub location: ValueRawPtr,
-}
-impl ObjUpvalue {
-    pub unsafe fn get_value(&self) -> Value {
-        self.location.0.as_ref().unwrap().clone()
-    }
-    pub unsafe fn set_value(&mut self, v: Value) {
-        *self.location.0.as_mut().unwrap() = v
-    }
-}
-#[derive(Debug, Clone, PartialEq, Eq, Finalize, PartialOrd, Ord)]
-pub struct ValueRawPtr(pub *mut Value);
-unsafe impl Trace for ValueRawPtr {
-    unsafe fn trace(&self) {
-        self.0.as_ref().trace()
-    }
-
-    unsafe fn root(&self) {
-        self.0.as_ref().root()
-    }
-
-    unsafe fn unroot(&self) {
-        self.0.as_ref().unroot()
-    }
-
-    fn finalize_glue(&self) {
-        unsafe { self.0.as_ref() }.finalize_glue()
-    }
+    pub upvalues: Vec<ObjUpvalueRef>,
 }
 
 pub type Cons = (Value, Value);
@@ -62,23 +28,8 @@ impl Default for Value {
         Self::Nil
     }
 }
+
 impl Value {
-    fn ptr<T: gc::Trace>(t: T) -> Gc<GcCell<T>> {
-        Gc::new(GcCell::new(t))
-    }
-    pub fn cons(a: Self, b: Self) -> Self {
-        Self::Cons(Self::ptr((a, b)))
-    }
-    pub fn closure(insn: Vec<Insn>, arity: usize, upvalues: Vec<ObjUpvalue>) -> Self {
-        Self::Closure(Self::ptr(ObjClosure {
-            insn,
-            arity,
-            upvalues,
-        }))
-    }
-    pub fn string(s: String) -> Self {
-        Self::String(Self::ptr(s))
-    }
     pub fn type_name(&self) -> &'static str {
         match self {
             Value::None => "(none)",
@@ -123,29 +74,23 @@ impl Value {
             _ => bail!("expected pair, found {}", self.type_name()),
         }
     }
+    pub fn as_mut_cons(&mut self) -> anyhow::Result<&mut Ptr<Cons>> {
+        match self {
+            Value::Cons(cell) => Ok(cell),
+            _ => bail!("expected pair, found {}", self.type_name()),
+        }
+    }
     pub fn as_closure(&self) -> anyhow::Result<&Ptr<ObjClosure>> {
         match self {
             Value::Closure(obj) => Ok(obj),
             e => bail!("expected pair, found {}", e.type_name()),
         }
     }
-    pub fn insn_ptr(closure: &Ptr<ObjClosure>) -> *const Insn {
-        closure.as_ref().borrow().deref().insn.as_ptr() as *const Insn
-    }
-    pub fn arity(closure: &Ptr<ObjClosure>) -> usize {
-        closure.as_ref().borrow().arity
-    }
-    pub fn car(cons: &Ptr<Cons>) -> Value {
-        cons.as_ref().borrow().deref().0.clone()
-    }
-    pub fn cdr(cons: &Ptr<Cons>) -> Value {
-        cons.as_ref().borrow().deref().1.clone()
-    }
-    pub fn set_car(cons: &Ptr<Cons>, new_car: Value) {
-        cons.borrow_mut().0 = new_car
-    }
-    pub fn set_cdr(cons: &Ptr<Cons>, new_cdr: Value) {
-        cons.borrow_mut().1 = new_cdr
+    pub fn as_mut_closure(&mut self) -> anyhow::Result<&mut Ptr<ObjClosure>> {
+        match self {
+            Value::Closure(obj) => Ok(obj),
+            e => bail!("expected pair, found {}", e.type_name()),
+        }
     }
 }
 impl ToString for Value {
@@ -158,9 +103,9 @@ impl ToString for Value {
             Value::True => "#t".to_string(),
             Value::False => "#f".to_string(),
             Value::Closure(..) => "#<procedure>".to_string(),
-            Value::String(s) => s.as_ref().borrow().borrow().to_string(),
+            Value::String(s) => s.to_string(),
             Value::Cons(cell) => {
-                let (car, cdr) = &*cell.as_ref().borrow();
+                let (car, cdr) = (&cell.0, &cell.1);
                 format!("({} {})", car.to_string(), cdr.to_string())
             }
         }
