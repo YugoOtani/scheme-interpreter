@@ -18,15 +18,15 @@ pub trait Trace {
 
 pub struct Ptr<T>(*mut T);
 
-pub struct MemoryNoGC<'a> {
+pub struct MemoryWithoutGC<'a> {
     mem: Vec<Box<dyn Trace + 'a>>,
 }
-impl<'a> MemoryNoGC<'a> {
+impl<'a> MemoryWithoutGC<'a> {
     pub fn new() -> Self {
         Self { mem: vec![] }
     }
 }
-impl<'a> Memory<'a> for MemoryNoGC<'a> {
+impl<'a> Memory<'a> for MemoryWithoutGC<'a> {
     fn alloc<T: Trace + 'a>(&mut self, t: T) -> Ptr<T> {
         let mut p = Box::new(t);
         let ptr = p.as_mut() as *mut T;

@@ -1,6 +1,6 @@
 use crate::{
     datastructure::SortedSet,
-    memory::{Memory, MemoryNoGC, Ptr},
+    memory::{Memory, MemoryWithoutGC, Ptr},
     upvalue::{ObjUpvalue, ObjUpvalueRef},
     VERBOSE,
 };
@@ -16,7 +16,7 @@ pub struct VM<'a> {
     global: HashMap<String, Value>,
     stack: Vec<Value>,
     upvalues: SortedSet<ObjUpvalueRef>,
-    memory: MemoryNoGC<'a>,
+    memory: MemoryWithoutGC<'a>,
     #[cfg(debug_assertions)]
     stk_addr: *const Value,
 }
@@ -43,7 +43,7 @@ impl<'a> VM<'a> {
             global: HashMap::new(),
             stack, // メモリのリアロケーションが起こらないようにする
             upvalues: SortedSet::new(),
-            memory: MemoryNoGC::new(),
+            memory: MemoryWithoutGC::new(),
             #[cfg(debug_assertions)]
             stk_addr,
         }
