@@ -36,7 +36,7 @@ impl<'a> Memory<'a> for MemoryWithoutGC<'a> {
 }
 
 impl<T> Ptr<T> {
-    /// pのlifetimeは手動で管理する必要がある
+    // pの参照先が有効であることをプログラマが保証する必要がある
     pub fn new(p: *const T) -> Self {
         Self(p.cast_mut())
     }
