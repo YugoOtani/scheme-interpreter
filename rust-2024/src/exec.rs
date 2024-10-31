@@ -41,7 +41,9 @@ impl<'a> VM<'a> {
         let stk_addr = stack.as_ptr();
         Self {
             global: HashMap::new(),
-            stack, // メモリのリアロケーションが起こらないようにする
+            // メモリのリアロケーションが起こらないようにする
+            // stackを毎回リアロケーションすると、upvalueのlocationが無効になる
+            stack,
             upvalues: SortedSet::new(),
             memory: MemoryWithoutGC::new(),
             #[cfg(debug_assertions)]
